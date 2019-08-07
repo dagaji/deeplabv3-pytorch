@@ -1,0 +1,23 @@
+python train_val.py --config config/decoder-s16-res1000-v1.yml --num_epochs 6 && \
+python train_val.py --config config/decoder-s16-res1000-v2.yml --num_epochs 6 && \
+python train_val.py --config config/decoder-s16-res2000-v1.yml --num_epochs 6 && \
+python train_val.py --config config/decoder-s16-res2000-v2.yml --num_epochs 6 && \
+python train_val.py --config config/decoder-s4-res1000-v1.yml --num_epochs 6 && \
+python train_val.py --config config/decoder-s4-res1000-v2.yml --num_epochs 6 && \
+python train_val.py --config config/decoder-s8-res2000-v1.yml --num_epochs 6 && \
+python train_val.py --config config/decoder-s8-res2000-v2.yml --num_epochs 6
+
+
+python train_val.py --config config/new_config/decoder-s8-res1000-normal.yml --num_epochs 10 --partitions 0 11 3 && \
+python train_val.py --config config/new_config/decoder-s8-res1000-slim.yml --num_epochs 10 --partitions 0 11 3 && \
+python train_val.py --config config/new_config/decoder-s8-res1000-ignore.yml --num_epochs 10 --partitions 0 11 3 && \
+python train_val.py --config config/new_config/decoder-s8-res1000-normal-aux.yml --num_epochs 10 --partitions 0 11 3 && \
+python train_val.py --config config/new_config/decoder-s16-res1500-slim.yml --num_epochs 10 --partitions 0 11 3 && \
+
+
+
+
+
+
+
+
