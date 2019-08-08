@@ -40,7 +40,7 @@ def find_intersect(line1_coeffs, line2_coeffs):
 	else:
 		return None
 
-	return (int(x), int(y))
+	return (x, y)
 
 def get_line_coeffs(point, orientation):
 	x, y = point
@@ -117,10 +117,10 @@ def rotate_img(mat, angle, bbox_size, is_mask=False):
 	else:
 		rotated_mat = cv2.warpAffine(mat, rotation_mat, bound_size, flags=cv2.INTER_AREA, borderValue=0)
 
-	rotated_center = (bound_w/2, bound_h/2)
+	rotated_center = (int(bound_w/2), int(bound_h/2))
 
-	x_limits = np.array((-bbox_size[0]/2, bbox_size[0]/2 + bbox_size[0]%2 - 1)) + rotated_center[0]
-	y_limits = np.array((-bbox_size[1]/2, bbox_size[1]/2 + bbox_size[1]%2 - 1)) + rotated_center[1]
+	x_limits = np.array((-bbox_size[0]/2, bbox_size[0]/2 + bbox_size[0]%2 - 1)).astype(int) + rotated_center[0]
+	y_limits = np.array((-bbox_size[1]/2, bbox_size[1]/2 + bbox_size[1]%2 - 1)).astype(int) + rotated_center[1]
 
 	bbox = rotated_mat[y_limits[0]:y_limits[1], x_limits[0]:x_limits[1]]
 
@@ -177,9 +177,9 @@ def vis_grid2(img, lines):
 
 	grid = np.zeros(img.shape, dtype=np.uint8)
 	for line in lines:
-		pt1 = line[0]
-		pt2 = line[1]
-		cv2.line(grid, pt1, pt2, (0,0,255), 4)
+		pt1 = tuple(np.array(line[0]).astype(int).tolist())
+		pt2 = tuple(np.array(line[1]).astype(int).tolist())
+		cv2.line(grid, pt1, pt2, (0,0,255), 1)
 
 	grid2 = (grid[...,-1] == 255).astype(np.uint8)
 	vis_img = vis.vis_seg(np.squeeze(img[...,::-1]), grid2, vis.make_palette(2))
@@ -211,7 +211,7 @@ def get_anchors(orientation, M, sz, is_vertical, plot=False):
 		line_coeffs_anchor = get_line_coeffs(tuple(anchor_point.tolist()), orientation_rad)
 		anchor_lines.append(normal_form(*line_coeffs_anchor))
 		if plot:
-			circle = plt.Circle(tuple(anchor_point.tolist()), 7.5, color='b')
+			circle = plt.Circle(tuple(anchor_point.tolist()), 2, color='b')
 			ax.add_patch(circle)
 	if plot:
 		plt.show()
@@ -229,36 +229,53 @@ def get_intersect_points(lines, sz, is_vertical):
 
 	return intersect_points_list
 
-def compute_gt(anchor_lines, lines, dist_tresh=20, plot=False):
+# def compute_gt(anchor_lines, lines, dist_tresh=7.5, plot=False):
 
-	clf_gt = []
-	regression_gt = []
-	for anchor_line in anchor_lines:
+# 	clf_gt = []
+# 	regression_gt = []
+# 	for anchor_line in anchor_lines:
+# 		anchor_offsets = []
+# 		anchor_dist = []
+# 		anchor_line_coords = np.array(anchor_line).reshape(-1,4).squeeze()
+# 		for line in lines:
+# 			line_coords = np.array(line).reshape(-1,4).squeeze()
+# 			offsets = anchor_line_coords - line_coords
+# 			dist = np.abs(offsets[np.abs(offsets) > 0]).sum() / 2.0
+# 			anchor_offsets.append(offsets)
+# 			anchor_dist.append(dist)
+# 		min_dist_index = np.argmin(anchor_dist)
+# 		min_dist = anchor_dist[min_dist_index]
+# 		if min_dist <= dist_tresh:
+# 			clf_prob = 1.0
+# 			regression_offset = anchor_offsets[min_dist_index].tolist()
+# 			if plot:
+# 				vis_grid2(np.zeros((449, 833, 3), dtype=np.uint8), [lines[min_dist_index], anchor_line])
+# 				plt.show()
+# 		else:
+# 			clf_prob = 0.0
+# 			regression_offset = [0, 0, 0, 0]
+# 		clf_gt.append(clf_prob)
+# 		regression_gt.append(regression_offset)
+# 	return clf_gt, regression_gt
+
+def compute_gt(anchor_lines, lines, dist_tresh=7.5):
+
+	clf_gt = np.zeros(len(anchor_lines), dtype=np.float32)
+	for idx, anchor_line in enumerate(anchor_lines):
 		anchor_offsets = []
 		anchor_dist = []
 		anchor_line_coords = np.array(anchor_line).reshape(-1,4).squeeze()
 		for line in lines:
 			line_coords = np.array(line).reshape(-1,4).squeeze()
 			offsets = anchor_line_coords - line_coords
-			dist = np.abs(offsets[np.abs(offsets) > 0]).sum()
+			dist = np.abs(offsets[np.abs(offsets) > 0]).sum() / 2.0
 			anchor_offsets.append(offsets)
 			anchor_dist.append(dist)
 		min_dist_index = np.argmin(anchor_dist)
 		min_dist = anchor_dist[min_dist_index]
-		if min_dist <= dist_tresh:
-			clf_prob = 1.0
-			regression_offset = anchor_offsets[min_dist_index].tolist()
-			if plot:
-				vis_grid2(np.zeros((449, 833, 3), dtype=np.uint8), [lines[min_dist_index], anchor_line])
-				plt.show()
-		else:
-			clf_prob = 0.0
-			regression_offset = [0, 0, 0, 0]
-		clf_gt.append(clf_prob)
-		regression_gt.append(regression_offset)
-	return clf_gt, regression_gt
+		clf_gt[idx] = np.float32(min_dist <= dist_tresh)
 
-
+	return clf_gt
 
 
 
@@ -277,50 +294,11 @@ if __name__ == "__main__":
 	angle_range_h = (95.0, 85.0)
 	angle_range_v = (-5.0, 5.0)
 
-	anchors_v = get_anchors(0.0, 15, bbox_size[::-1], is_vertical=True, plot=False)
-	anchors_h = get_anchors(90.0, 10, bbox_size[::-1], is_vertical=False, plot=False)
-
-
-	# M = 10
-	# for orientation in anchor_angles_h:
-	# 	orientation_rad = np.deg2rad(orientation)
-	# 	line_coeffs = get_line_coeffs(center_point, np.pi/2 - orientation_rad)
-	# 	intersect_points = find_intesect_borders(line_coeffs, bbox_size[::-1], is_vertical=True)
-	# 	step_len = distance.euclidean(intersect_points[0], intersect_points[1]) / M
-	# 	unit_vector = np.array((np.cos(orientation_rad), np.sin(orientation_rad)))
-	# 	fig, ax = plt.subplots(1)
-	# 	ax.imshow(np.zeros((449, 833, 3), dtype=np.uint8))
-	# 	lines_h = []
-	# 	for i in range(1, M):
-	# 		anchor_point = np.array(intersect_points[0]) + i * step_len * unit_vector
-	# 		line_h_coeffs = get_line_coeffs(tuple(anchor_point.tolist()), np.pi/2 - orientation_rad)
-	# 		lines_h.append(normal_form(*line_h_coeffs))
-	# 		circle = plt.Circle(tuple(anchor_point.tolist()), 7.5, color='b')
-	# 		ax.add_patch(circle)
-	# 	#vis_grid(np.zeros((449, 833, 3), dtype=np.uint8), lines_h)
-	# 	plt.show()
-
-	# M = 15
-	# for orientation in anchor_angles_v:
-	# 	orientation_rad = np.deg2rad(orientation)
-	# 	line_coeffs = get_line_coeffs(center_point, np.pi/2 - orientation_rad)
-	# 	intersect_points = find_intesect_borders(line_coeffs, bbox_size[::-1], is_vertical=False)
-	# 	step_len = distance.euclidean(intersect_points[0], intersect_points[1]) / M
-	# 	unit_vector = np.array((np.cos(orientation_rad), np.sin(orientation_rad)))
-	# 	fig, ax = plt.subplots(1)
-	# 	ax.imshow(np.zeros((449, 833, 3), dtype=np.uint8))
-	# 	lines_h = []
-	# 	for i in range(1, M):
-	# 		anchor_point = np.array(intersect_points[0]) + i * step_len * unit_vector
-	# 		line_h_coeffs = get_line_coeffs(tuple(anchor_point.tolist()), np.pi/2 - orientation_rad)
-	# 		lines_h.append(normal_form(*line_h_coeffs))
-	# 		circle = plt.Circle(tuple(anchor_point.tolist()), 7.5, color='b')
-	# 		ax.add_patch(circle)
-	# 	#vis_grid(np.zeros((449, 833, 3), dtype=np.uint8), lines_h)
-	# 	plt.show()
-
-
-
+	anchors_v = get_anchors(0.0, 50, bbox_size[::-1], is_vertical=True, plot=False)
+	anchors_h = get_anchors(90.0, 25, bbox_size[::-1], is_vertical=False, plot=False)
+	vis_grid2(np.zeros((449, 833, 3), dtype=np.uint8), anchors_v)
+	vis_grid2(np.zeros((449, 833, 3), dtype=np.uint8), anchors_h)
+	plt.show()
 
 	for glob in Path(masks_dir).glob("*.png"):
 
@@ -341,24 +319,14 @@ if __name__ == "__main__":
 		_, angles_h, dists_h = search_lines(mask_rotated, angle_range_h, npoints=1000, min_distance=100, min_angle=300, threshold=None)
 		lines_h = get_lines(dists_h, angles_h)
 		intersect_points_h = get_intersect_points(lines_h, bbox_size[::-1], is_vertical=False)
-		# for line in lines_h:
-		# 	line_coeffs = general_form(*line)
-		# 	intersect_points = find_intesect_borders(line_coeffs, bbox_size[::-1], is_vertical=False)
-		# 	if intersect_points is not None:
-		# 		intersect_points_h.append(intersect_points)
 
 		_, angles_v, dists_v = search_lines(mask_rotated, angle_range_v, npoints=1000, min_distance=100, min_angle=300, threshold=None)
 		lines_v = get_lines(dists_v, angles_v)
 		intersect_points_v = get_intersect_points(lines_v, bbox_size[::-1], is_vertical=True)
-		# for line in lines_v:
-		# 	line_coeffs = general_form(*line)
-		# 	intersect_points = find_intesect_borders(line_coeffs, bbox_size[::-1], is_vertical=True)
-		# 	if intersect_points is not None:
-		# 		intersect_points_v.append(intersect_points)
-
-		clf_gt_h, regression_gt_h = compute_gt(anchors_h, intersect_points_h)
-		clf_gt_v, regression_gt_v = compute_gt(anchors_v, intersect_points_v)
-		pdb.set_trace()
+		
+		clf_gt_h = compute_gt(anchors_h, intersect_points_h)
+		clf_gt_v = compute_gt(anchors_v, intersect_points_v)
+		
 
 
 

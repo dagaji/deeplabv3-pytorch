@@ -12,7 +12,7 @@ def make_palette(num_classes):
         palette: the colormap as a k x 3 array of RGB colors
     """
     palette = np.zeros((num_classes, 3), dtype=np.uint8)
-    for k in xrange(0, num_classes):
+    for k in range(0, num_classes):
         label = k
         i = 0
         while label:
