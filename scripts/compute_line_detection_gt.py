@@ -15,6 +15,8 @@ import vis
 from matplotlib.patches import Circle
 import math
 from scipy.spatial import distance
+import pickle
+
 
 def general_form(rho, theta):
 	a = math.cos(theta)
@@ -192,6 +194,7 @@ def vis_grid2(img, lines):
 def make_parser():
 	p = ArgumentParser()
 	p.add_argument('--dataset', type=str, required=True)
+	p.add_argument('--dst', type=str, required=True)
 	return p
 
 def get_anchors(orientation, M, sz, is_vertical, plot=False):
@@ -287,6 +290,11 @@ if __name__ == "__main__":
 	images_dir = os.path.join(args.dataset, "images")
 	masks_dir = os.path.join(args.dataset, "masks_test")
 
+	dst_images_dir = os.path.join(args.dst, "images")
+	if os.path.exists(args.dst):
+		shutil.rmtree(args.dst, ignore_errors=True)
+	os.makedirs(dst_images_dir)
+
 	kernel = np.ones((3,3), np.uint8)
 	iterations = 2
 	bbox_size = (833, 449)
@@ -296,15 +304,14 @@ if __name__ == "__main__":
 
 	anchors_v = get_anchors(0.0, 50, bbox_size[::-1], is_vertical=True, plot=False)
 	anchors_h = get_anchors(90.0, 25, bbox_size[::-1], is_vertical=False, plot=False)
-	vis_grid2(np.zeros((449, 833, 3), dtype=np.uint8), anchors_v)
-	vis_grid2(np.zeros((449, 833, 3), dtype=np.uint8), anchors_h)
-	plt.show()
 
+	clf_gt = dict()
 	for glob in Path(masks_dir).glob("*.png"):
 
 		mask_path = str(glob)
 		img_name = os.path.basename(mask_path)
 		img_path = os.path.join(images_dir, img_name)
+		dst_img_path = os.path.join(dst_images_dir, img_name)
 		if "APR" not in img_name:
 			continue
 		img = cv2.imread(img_path)
@@ -314,6 +321,7 @@ if __name__ == "__main__":
 		_, angles, _ = search_lines(mask, angle_range_coarse, npoints=1000, min_distance=100, min_angle=300, threshold=None)
 		rotation_angle = 90.0 - np.rad2deg(angles[0])
 		img_rotated = rotate_img(img, -rotation_angle, bbox_size)
+		cv2.imwrite(dst_img_path, img_rotated)
 		mask_rotated = rotate_img(mask, -rotation_angle, bbox_size, is_mask=True)
 
 		_, angles_h, dists_h = search_lines(mask_rotated, angle_range_h, npoints=1000, min_distance=100, min_angle=300, threshold=None)
@@ -326,6 +334,15 @@ if __name__ == "__main__":
 		
 		clf_gt_h = compute_gt(anchors_h, intersect_points_h)
 		clf_gt_v = compute_gt(anchors_v, intersect_points_v)
+		clf_gt[img_name] = dict()
+		clf_gt[img_name]['h'] = clf_gt_h
+		clf_gt[img_name]['v'] = clf_gt_v
+
+	with open(os.path.join(args.dst, 'lines_gt.pickle'),'wb') as file:
+		pickle.dump(clf_gt, file)
+
+
+
 		
 
 
