@@ -84,6 +84,8 @@ class Deeplabv3Plus1(_Deeplabv3Plus):
 			return self.predict(x)
 
 
+
+
 class Deeplabv3Plus2(_Deeplabv3Plus):
 	def __init__(self, n_classes, pretrained_model, predict):
 		super(Deeplabv3Plus2, self).__init__(n_classes, 

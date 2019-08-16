@@ -27,6 +27,7 @@ class LinesDatasetFactory:
         y_norm = float(self.bbox_size[1] - 1) / 2
         coords[:, 0] = coords[:,0] / x_norm - 1
         coords[:, 1] = coords[:, 1] / y_norm - 1
+        coords = coords.astype(np.float32)
         return coords
 
     def line_coords(self, intersect_points, orientation, n_points, plot=False):
@@ -79,11 +80,9 @@ class LinesDatasetFactory:
 
         self.grids_v, self.grids_h = self.compute_anchors_grid()
 
-    def get_line_dataset(self, image_id):
+    def get_line_datasets(self, image_id):
         lines_gt_v, lines_gt_h = self.lines_gt[image_id]['v'], self.lines_gt[image_id]['h']
-        lines_gt_total = np.concatenate((lines_gt_v, lines_gt_h))
-        grid_total = self.grids_v + self.grids_h
-        return LinesDataset(grid_total, lines_gt_total)
+        return LinesDataset(self.grids_v, lines_gt_v), LinesDataset(self.grids_h, lines_gt_h)
 
 
 class LinesDataset(data.Dataset):

@@ -105,22 +105,6 @@ class SlimDataset(BaseDataset):
         return image_id, img, label
 
 
-
-# @register.attach('dataset_multi')
-# class DatasetMulti(BaseDataset):
-
-#     def __init__(self, root, id_list_path, augmentations=[], scaling_factor=0.5):
-#         super(DatasetMulti, self).__init__(root, id_list_path, augmentations)
-#         self.scaling_factor = scaling_factor
-
-#     def __getitem__(self, index):
-#         data = super(DatasetMulti, self).__getitem__(index)
-#         img, label = data['image'], data['label']
-#         img_down = scale_img(img, self.scaling_factor, is_mask=False)
-#         label_down = scale_img(label, self.scaling_factor, is_mask=True)
-#         data.update(img_down=img_down, label_down=label_down)
-#         return data
-
 @register.attach('one_hot')
 class OneHotDataset(BaseDataset):
 
@@ -237,10 +221,30 @@ class MultiTaskWeightsDataset(MultiTaskDataset):
         data.update(weights=weights, label_2c=label_2c)
         return data
 
+@register.attach('instance')
+class InstanceDataset(BaseDataset):
 
-def scale_img(img, scaling_factor, is_mask=False):
-    if is_mask:
-        img_down = cv2.resize(img, None, fx=scaling_factor, fy=scaling_factor, interpolation=cv2.INTER_NEAREST)
-    else:
-        img_down = cv2.resize(img, None, fx=scaling_factor, fy=scaling_factor, interpolation=cv2.INTER_AREA)
-    return img_down
+    instance_dataset_path = '/home/davidgj/projects/instance_APR'
+    vis_dir = '/home/davidgj/projects/vis_aux'
+
+    def _load_data(self, idx):
+        image_id, img, label = super(InstanceDataset, self)._load_data(idx)
+        instance_label_path = os.path.join(self.instance_dataset_path, image_id)
+        instance_label = np.asarray(imread(instance_label_path))
+        label = np.dstack((label, instance_label))
+        return image_id, img, label
+
+    def __getitem__(self, index):
+        data = super(InstanceDataset, self).__getitem__(index)
+        label, instance_label = data['label'][...,0], data['label'][...,1]
+        instance_label[instance_label == 255] = 0
+        # if np.any(label == 1):
+        #     cv2.imwrite(os.path.join(self.vis_dir, 'label.png'), label)
+        #     cv2.imwrite(os.path.join(self.vis_dir, 'instance_label.png'), instance_label)
+        #     pdb.set_trace()
+        data.update(label=label, instance_label=instance_label)
+        return data
+
+
+
+

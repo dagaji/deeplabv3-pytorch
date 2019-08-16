@@ -35,8 +35,9 @@ class DeepLabv3Plus(_Deeplabv3Plus):
 		x_low = features["skip1"]
 		x = self.aspp(x)
 		x = self.decoder(x, x_low)
-		return F.interpolate(x, size=input_shape, mode='bilinear', align_corners=False)
-
+		x = F.interpolate(x, size=input_shape, mode='bilinear', align_corners=False)
+		x = self.classifier(x).transpose(0,1)[1]
+		return x
 
 class LineDetectionNet(nn.Module):
 	def __init__(self, in_planes=256):
@@ -45,11 +46,8 @@ class LineDetectionNet(nn.Module):
 		init_conv(self.clf)
 
 	def forward(self, features, grid):
-		pdb.set_trace()
 		features_sample = torch.squeeze(F.grid_sample(features, grid), dim=3)
-		pdb.set_trace()
-		features_mean = torch.squeeze(features_sample.mean(2), dim=2)
-		pdb.set_trace()
+		features_mean = features_sample.mean(2)
 		score = self.clf(features_mean)
 		return score
 

@@ -3,6 +3,77 @@ import torch
 import pdb
 from .register import register
 
+def cross_entropy(score, target):
+	device = score.device
+	target = target.to(device)
+	log_prob = F.log_softmax(score, dim=1)
+	loss = F.nll_loss(log_prob, target)
+	return loss
+
+def norm(x,y):
+	return torch.sqrt(((x - y) ** 2).sum(1))
+
+@register.attach('discriminative')
+def discriminative_loss(inputs, data):
+
+	margin_v = 0.5
+	margin_d = 1.5
+
+	seg_score = inputs['seg']
+	embeddings = inputs['coords']
+	ndims = embeddings.shape[1]
+	label = data['label']
+	instance_label = data['instance_label']
+
+	device = embeddings.device
+	seg_loss = cross_entropy(seg_score, label)
+
+	loss_var = []
+	loss_dist = []
+	loss_reg = []
+
+	for idx_n in range(instance_label.shape[0]):
+
+		instance_mask = instance_label[idx_n]
+		embeddings_n = embeddings[idx_n].permute(1,2,0)
+
+		instances = torch.unique(instance_mask)
+		Nc = len(instances) - 1
+		if Nc == 0:
+			continue
+
+		instances = instances[1:]
+		centroids = torch.zeros((Nc, ndims), dtype=torch.float).to(device)
+		instance_mask = instance_mask.to(device)
+
+		_loss_var = []
+		_lost_dist = []
+		_lost_reg = []
+
+		for idx_i, i in enumerate(instances):
+			x_i = embeddings_n[instance_mask == i]
+			centroids[idx_i] = x_i.mean(0)
+			diff_i = norm(x_i, centroids[idx_i]) - margin_v
+			#diff_i = torch.sqrt(((x_i - centroids[i]) ** 2).sum(1)) - margin_v
+			diff_i = torch.clamp(diff_i, min=0.0) ** 2
+			_loss_var.append(diff_i.mean())
+			_loss_reg.append(torch.norm(centroids[idx_i]))
+
+		for idx_c, centroid in enumerate(centroids):
+			diff_c = 2 * margin_d -  norm(centroids, centroid)
+			diff_c[idx_c] = 0.0
+			diff_c = torch.clamp(diff_c, min=0.0) ** 2
+			_lost_dist.append(diff_c.sum() / (Nc - 1))
+
+		loss_var.append(sum(_loss_var) / Nc)
+		loss_reg.append(sum(_loss_reg) / Nc)
+		loss_dist.append(sum(_lost_dist) / Nc)
+
+	instance_loss = (sum(loss_var) + sum(loss_dist) + sum(loss_reg)) / instance_label.shape[0]
+
+	return seg_loss + instance_loss
+
+
 @register.attach('relax')
 def relax_loss(inputs, data):
 	targets = data['label_1hot'].to(inputs.device)

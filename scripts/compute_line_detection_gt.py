@@ -261,7 +261,7 @@ def get_intersect_points(lines, sz, is_vertical):
 # 		regression_gt.append(regression_offset)
 # 	return clf_gt, regression_gt
 
-def compute_gt(anchor_lines, lines, dist_tresh=7.5):
+def compute_gt(anchor_lines, lines, dist_tresh=20):
 
 	clf_gt = np.zeros(len(anchor_lines), dtype=np.float32)
 	for idx, anchor_line in enumerate(anchor_lines):
@@ -298,7 +298,7 @@ if __name__ == "__main__":
 	kernel = np.ones((3,3), np.uint8)
 	iterations = 2
 	bbox_size = (833, 449)
-	angle_range_coarse = (55.0, 135.0)
+	angle_range_coarse = (45.0, 135.0)
 	angle_range_h = (95.0, 85.0)
 	angle_range_v = (-5.0, 5.0)
 
