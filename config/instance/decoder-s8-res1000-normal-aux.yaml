@@ -34,10 +34,11 @@ training:
             gamma: 0.9
 
     loss: 'discriminative'
+    aux_loss: False
 
     # Model Configuration
     model:
-        name: 'deeplabv3+1'
+        name: 'deeplabv3+instance3'
         stride: 8
             
 
@@ -45,7 +46,7 @@ training:
 validation:
 
     batch_size: 1
-    val_epochs: 4
+    val_epochs: 2
 
     val_expers:
 

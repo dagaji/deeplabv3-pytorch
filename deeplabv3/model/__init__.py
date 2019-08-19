@@ -1,10 +1,14 @@
 from .deeplab import *
 from .predict import *
+from .instance import *
 import torch.nn as nn
 
 models_map = {'deeplabv3' : Deeplabv3,
 			  'deeplabv3+1' : Deeplabv3Plus1,
 			  'deeplabv3+2' : Deeplabv3Plus2,
+			  'deeplabv3+instance1': Deeplabv3PlusInstance1,
+			  'deeplabv3+instance2': Deeplabv3PlusInstance2,
+			  'deeplabv3+instance3': Deeplabv3PlusInstance3,
 			  }
 
 predict_map = {'multilabel': multilabel_predict,

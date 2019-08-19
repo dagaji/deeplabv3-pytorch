@@ -29,7 +29,6 @@ def train(train_model, train_dataloader, criterion, optimizer, scheduler, device
 	for _iter, data in tqdm(enumerate(train_dataloader), total=len(train_dataloader), dynamic_ncols=True):
 
 		inputs = data['image'].to(device)
-		pdb.set_trace()
 
 		with torch.set_grad_enabled(True):
 

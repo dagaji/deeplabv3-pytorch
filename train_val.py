@@ -95,13 +95,14 @@ if __name__ == "__main__":
 		checkpoint_dir = os.path.join('checkpoint', args.dataset, 'partition_{}', exper_name).format(partition_number)
 		last_checkpoint_path = get_last_checkpoint(checkpoint_dir)
 		if last_checkpoint_path is not None:
+			print("Checkpoint")
 			last_checkpoint = torch.load(last_checkpoint_path)
-			model_train.load_state_dict(last_checkpoint["model_state_dict"])
+			#model_train.load_state_dict(last_checkpoint["model_state_dict"])
+			model_train.load_state_dict(last_checkpoint["model_state_dict"], strict=False)
 			current_epoch = last_checkpoint["epoch"]
-			optimizer.load_state_dict(last_checkpoint["optimizer_state_dict"])
+			# optimizer.load_state_dict(last_checkpoint["optimizer_state_dict"])
 		else:
 			current_epoch = 0
-
 		scheduler = get_scheduler(training_cfg['scheduler']['name'])(optimizer, **training_cfg['scheduler']["params"])
 
 		results_dir = os.path.join('results', args.dataset, 'partition_{}', exper_name).format(partition_number)

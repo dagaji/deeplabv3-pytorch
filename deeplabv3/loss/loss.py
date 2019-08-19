@@ -2,12 +2,13 @@ from torch.nn import functional as F
 import torch
 import pdb
 from .register import register
+import numpy as np
 
 def cross_entropy(score, target):
 	device = score.device
 	target = target.to(device)
 	log_prob = F.log_softmax(score, dim=1)
-	loss = F.nll_loss(log_prob, target)
+	loss = F.nll_loss(log_prob, target, ignore_index=255)
 	return loss
 
 def norm(x,y):
@@ -24,6 +25,8 @@ def discriminative_loss(inputs, data):
 	ndims = embeddings.shape[1]
 	label = data['label']
 	instance_label = data['instance_label']
+
+	#pdb.set_trace()
 
 	device = embeddings.device
 	seg_loss = cross_entropy(seg_score, label)
@@ -43,35 +46,36 @@ def discriminative_loss(inputs, data):
 			continue
 
 		instances = instances[1:]
-		centroids = torch.zeros((Nc, ndims), dtype=torch.float).to(device)
-		instance_mask = instance_mask.to(device)
-
+		centroids = []
 		_loss_var = []
-		_lost_dist = []
-		_lost_reg = []
+		_loss_dist = []
+		_loss_reg = []
 
-		for idx_i, i in enumerate(instances):
+		for i in instances:
 			x_i = embeddings_n[instance_mask == i]
-			centroids[idx_i] = x_i.mean(0)
-			diff_i = norm(x_i, centroids[idx_i]) - margin_v
-			#diff_i = torch.sqrt(((x_i - centroids[i]) ** 2).sum(1)) - margin_v
+			_centroid = torch.unsqueeze(x_i.mean(0), dim=0)
+			diff_i = norm(x_i, _centroid) - margin_v
 			diff_i = torch.clamp(diff_i, min=0.0) ** 2
 			_loss_var.append(diff_i.mean())
-			_loss_reg.append(torch.norm(centroids[idx_i]))
+			_loss_reg.append(torch.norm(_centroid, 2))
+			centroids.append(_centroid)
 
+		centroids = torch.cat(tuple(centroids), dim=0)
+		
 		for idx_c, centroid in enumerate(centroids):
-			diff_c = 2 * margin_d -  norm(centroids, centroid)
-			diff_c[idx_c] = 0.0
+			loc = torch.tensor(np.arange(centroids.size(0)) != idx_c)
+			diff_c = 2 * margin_d -  norm(centroids[loc], centroid)
 			diff_c = torch.clamp(diff_c, min=0.0) ** 2
-			_lost_dist.append(diff_c.sum() / (Nc - 1))
+			_loss_dist.append(diff_c.sum() / (Nc - 1))
 
 		loss_var.append(sum(_loss_var) / Nc)
 		loss_reg.append(sum(_loss_reg) / Nc)
-		loss_dist.append(sum(_lost_dist) / Nc)
+		loss_dist.append(sum(_loss_dist) / Nc)
 
-	instance_loss = (sum(loss_var) + sum(loss_dist) + sum(loss_reg)) / instance_label.shape[0]
-
-	return seg_loss + instance_loss
+	if len(loss_var) > 0:
+		instance_loss = (sum(loss_var) + sum(loss_dist) + 0.001 * sum(loss_reg)) / len(loss_var)
+		return (seg_loss + instance_loss) / 2
+	return seg_loss
 
 
 @register.attach('relax')
