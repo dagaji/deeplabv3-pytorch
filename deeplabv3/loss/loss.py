@@ -86,6 +86,77 @@ def relax_loss(inputs, data):
 	nll = (-F.log_softmax(inputs, dim=1) * targets).sum(1).view(batch_size, -1).sum(1) / weights.view(batch_size, -1).sum(1)
 	return nll.mean()
 
+@register.attach('ori_loss')
+def ori_loss(inputs, data):
+
+	seg_inputs = inputs['seg']
+	seg_loss = multitask(seg_inputs, data)
+
+	ori_inputs = inputs['ori']
+	batch_size = ori_inputs.size(0)
+	ori_gt = data['ori_gt'].to(ori_inputs.device)
+	
+	log_prob_ori = F.log_softmax(ori_inputs, dim=1)
+	ori_loss = -1.0 * (log_prob_ori * ori_gt).sum(1).mean()
+	
+	return seg_loss + ori_loss
+
+@register.attach('ori_loss_v2')
+def ori_loss_v2(inputs, data):
+
+	seg_inputs = inputs['seg']
+	seg_loss = multitask(seg_inputs, data)
+
+	ori_inputs = inputs['ori']
+	ori_gt = data['ori_gt'].to(ori_inputs.device)
+	
+	log_prob_ori = F.log_softmax(ori_inputs, dim=1)
+	ori_loss = -1.0 * (log_prob_ori * ori_gt).sum(1).mean()
+	
+	return seg_loss + ori_loss
+
+@register.attach('hist_loss')
+def hist_loss(inputs, data):
+
+	seg_inputs = inputs['seg']
+	seg_loss = multitask(seg_inputs, data)
+
+	hist_inputs = inputs['hist']
+	bs = hist_inputs.shape[0]
+	hist_gt = data['hist_gt'].to(hist_inputs.device)
+	hist_loss = []
+	for _hist, idx in zip(hist_inputs, hist_gt):
+		hist_loss.append(torch.clamp(0.5 - _hist[idx], min=0.0))
+	hist_loss =  sum(hist_loss) / hist_inputs.shape[0]
+
+	print("hist score: {}".format(hist_inputs.cpu().detach().numpy()[0][data['hist_gt'].numpy()[0]]))
+	print("seg_loss: {}".format(seg_loss.item()))
+	return seg_loss + 0.4 * hist_loss
+
+@register.attach('hist_loss_v2')
+def hist_loss(inputs, data):
+
+	seg_inputs = inputs['seg']
+	seg_loss = multitask(seg_inputs, data)
+
+	hist_inputs = inputs['hist']
+	hist_gt = data['hist_gt'].to(hist_inputs.device)
+	hist_loss = []
+	for _hist, idx in zip(hist_inputs, hist_gt):
+		diff_1 = _hist[idx] - _hist[idx+1]
+		hist_loss_1 = torch.log(1.0 - torch.clamp(0.4 - diff_1, min=0.0, max=1.0) + 1e-3)
+		diff_2 = _hist[idx] - _hist[idx-1]
+		hist_loss_2 = torch.log(1.0 - torch.clamp(0.4 - diff_2, min=0.0, max=1.0) + 1e-3)
+		hist_loss.append(hist_loss_1 + hist_loss_2)
+
+	hist_loss =  -1.0 * sum(hist_loss) / hist_inputs.shape[0]
+
+	#print(hist_loss.item())
+	
+	#return seg_loss + 0.1 * hist_loss
+	return hist_loss
+
+
 @register.attach('multitask')
 def multitask(inputs, data):
 

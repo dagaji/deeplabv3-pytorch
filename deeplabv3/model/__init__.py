@@ -1,6 +1,8 @@
 from .deeplab import *
 from .predict import *
 from .instance import *
+from .ori import *
+from .ori_v2 import *
 import torch.nn as nn
 
 models_map = {'deeplabv3' : Deeplabv3,
@@ -9,6 +11,13 @@ models_map = {'deeplabv3' : Deeplabv3,
 			  'deeplabv3+instance1': Deeplabv3PlusInstance1,
 			  'deeplabv3+instance2': Deeplabv3PlusInstance2,
 			  'deeplabv3+instance3': Deeplabv3PlusInstance3,
+			  'deeplabv3+ori': Deeplabv3PlusOri,
+			  'deeplabv3+ori2': Deeplabv3PlusOri2,
+			  'deeplabv3+ori3': Deeplabv3PlusOri3,
+			  # 'deeplabv3+ori_v2': Deeplabv3PlusOri_v2,
+			  # 'hist_v2': Deeplabv3PlusHist_v2,
+			  'hist': Deeplabv3PlusHist,
+			  'angle_clf': Deeplabv3PlusAngleClf,
 			  }
 
 predict_map = {'multilabel': multilabel_predict,

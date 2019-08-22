@@ -1,0 +1,64 @@
+num_classes: 4
+
+# Training Configuration
+training:
+
+    batch_size: 1
+    display_iters: 1
+    iter_size: 10
+
+    # Dataset Configuration
+    dataset:
+        name: 'hist'
+        params:
+            root: '/home/davidgj/projects/APR_TAX_RWY_refined'
+            augmentations:
+                - pca_angle:
+                    sigma_pca: 0.05
+                - choice_angle:
+                    - rotate_angle:
+                        sigma_angle: 17.0
+                        w: 833
+                        h: 417
+                    - random_crop_angle:
+                        w: 833
+                        h: 417
+
+    # LR Schedule Configuration
+    scheduler:
+        name: 'poly_lr'
+        params:
+            max_iter: 50000
+            decay_iter: 1
+            gamma: 0.9
+
+    aux_loss: False
+    loss: 'hist_loss'
+
+    # Model Configuration
+    model:
+        name: 'hist'
+        stride: 8
+            
+
+# Validation Configuration
+validation:
+
+    batch_size: 1
+    val_epochs: 1
+
+    val_expers:
+
+        - name: 'res1000_s8'
+          dataset:
+            name: 'slim_dataset'
+            params:
+                root: '/home/davidgj/projects/APR_TAX_RWY'
+                train: False
+          model:
+            name: 'deeplabv3+1'
+            stride: 8
+
+
+
+

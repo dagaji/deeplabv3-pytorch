@@ -120,6 +120,23 @@ def vis_grid(img, lines):
 
 	return vis_img
 
+def create_grid(sz, lines, width=8):
+
+	grid = np.zeros(sz+(3,), dtype=np.uint8)
+	for line in lines:
+		rho, theta = line
+		a = np.cos(theta)
+		b = np.sin(theta)
+		x0 = a*rho
+		y0 = b*rho
+		x1 = int(x0 + 1500*(-b))
+		y1 = int(y0 + 1500*(a))
+		x2 = int(x0 - 1500*(-b))
+		y2 = int(y0 - 1500*(a))
+		cv2.line(grid, (x1,y1), (x2,y2), (0,0,255), width)
+	grid2 = (grid[...,-1] == 255).astype(np.uint8)
+	return grid2
+
 
 def get_anchors(orientation, M, sz, is_vertical):
 

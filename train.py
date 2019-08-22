@@ -5,6 +5,9 @@ from argparse import ArgumentParser
 from pathlib import Path
 import pdb
 import torch.nn as nn
+import matplotlib
+matplotlib.use('tkagg')
+import matplotlib.pyplot as plt
 
 
 def set_bn_eval(m):
@@ -25,10 +28,16 @@ def train(train_model, train_dataloader, criterion, optimizer, scheduler, device
 
 	optimizer.zero_grad()
 
+	
+
 	# Iterate over data.
 	for _iter, data in tqdm(enumerate(train_dataloader), total=len(train_dataloader), dynamic_ncols=True):
 
 		inputs = data['image'].to(device)
+
+		# if  _iter == 0:
+		# 	train_model.plot_filters()
+		# 	plt.show()
 
 		with torch.set_grad_enabled(True):
 
@@ -45,6 +54,9 @@ def train(train_model, train_dataloader, criterion, optimizer, scheduler, device
 			if _iter > 0 and _iter % iter_size == 0:
 				optimizer.step()
 				optimizer.zero_grad()
+				# train_model.plot_filters()
+				# plt.show()
+				#pdb.set_trace()
 
 			if _iter > 0 and _iter % (display_iters * iter_size) == 0:
 				print('>>> Loss: {:.4f}'.format(running_loss.value()))

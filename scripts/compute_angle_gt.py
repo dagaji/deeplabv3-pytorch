@@ -76,11 +76,11 @@ def create_grid(sz, lines, width=8):
 		b = np.sin(theta)
 		x0 = a*rho
 		y0 = b*rho
-		x1 = int(x0 + 1500*(-b))
-		y1 = int(y0 + 1500*(a))
-		x2 = int(x0 - 1500*(-b))
-		y2 = int(y0 - 1500*(a))
-		cv2.line(grid, (x1,y1), (x2,y2), (0,0,255), 8)
+		x1 = int(x0 + 2500*(-b))
+		y1 = int(y0 + 2500*(a))
+		x2 = int(x0 - 2500*(-b))
+		y2 = int(y0 - 2500*(a))
+		cv2.line(grid, (x1,y1), (x2,y2), (0,0,255), width)
 	grid2 = (grid[...,-1] == 255).astype(np.uint8)
 	return grid2
 
@@ -154,13 +154,16 @@ if __name__ == "__main__":
 		grid_test[grid16 == 1] = 255
 		grid_test[grid8 == 1] = 1
 
-		APR_area = np.logical_or(mask == 0, mask == 1)
+		APR_area = np.logical_or(mask == 1, mask == 255, mask == 0)
 
 		dst_mask = mask.copy()
 		dst_mask[APR_area] = grid16[APR_area]
 
 		dst_mask_test = mask.copy()
 		dst_mask_test[APR_area] = grid_test[APR_area]
+
+		plt.imshow(APR_area)
+		plt.show()
 
 		copyfile(img_path, dst_img_path)
 		cv2.imwrite(dst_mask_path, dst_mask)
