@@ -1,2 +1,2 @@
-#from .augmentation import Compose
-from .augmentation_angle import Compose
+from .augmentation import Compose
+from .augmentation_angle import Compose as ComposeAngle
