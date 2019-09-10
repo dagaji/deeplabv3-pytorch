@@ -5,22 +5,23 @@ training:
 
     batch_size: 2
     display_iters: 2
-    iter_size: 10
+    iter_size: 5
 
     # Dataset Configuration
     dataset:
-        name: 'histv2'
+        name: 'multitask'
         params:
-            root: '/home/davidgj/projects/APR_TAX_RWY_refined'
+            root: '/home/davidgj/projects/APR_TAX_RWY'
             augmentations:
-                - pca_angle:
-                    sigma_pca: 0.05
-                - choice_angle:
-                    - rotate_angle:
+                - pca:
+                    sigma_pca: 0.05   
+                - random_flip:
+                - choice:
+                    - rotate:
                         sigma_angle: 17.0
                         w: 833
                         h: 417
-                    - random_crop_angle:
+                    - random_crop:
                         w: 833
                         h: 417
 
@@ -33,11 +34,11 @@ training:
             gamma: 0.9
 
     aux_loss: True
-    loss: 'hist_lossv2'
+    loss: 'multitask'
 
     # Model Configuration
     model:
-        name: 'hist'
+        name: 'deeplabv3+1'
         stride: 8
             
 
@@ -58,7 +59,4 @@ validation:
           model:
             name: 'deeplabv3+1'
             stride: 8
-
-
-
-
+            predict: 'line_dect'

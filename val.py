@@ -152,5 +152,4 @@ if __name__ == "__main__":
 				val_dataloader, 
 				num_classes, 
 				device, saver=results_saver)
-			print()
 

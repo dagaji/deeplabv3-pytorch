@@ -14,16 +14,6 @@ from torchvision.models.segmentation.fcn import FCN, FCNHead
 from torch.nn import functional as F
 from collections import OrderedDict
 
-# def _deeplabv3(n_classes, pretrained_model, aux_clf=True):
-# 	clf = nn.Conv2d(256, n_classes, 1, 1, 0, 1, bias=False)
-# 	init_conv(clf)
-# 	clf_aux = nn.Conv2d(256, n_classes, 1, 1, 0, 1, bias=False)
-# 	init_conv(clf_aux)
-# 	model_layers = list(pretrained_model.children())
-# 	model_layers[-2][-1] = clf
-# 	model_layers[-1][-1] = clf_aux
-# 	return pretrained_model
-
 class Deeplabv3(nn.Module):
 	pass
 

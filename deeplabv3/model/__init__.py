@@ -9,10 +9,7 @@ models_map = {'deeplabv3' : Deeplabv3,
 			  'hist': Deeplabv3PlusHist,
 			  }
 
-predict_map = {'multilabel': multilabel_predict,
-			   'erode': erode_predict,
-			   'default': argmax_predict,
-			   'argmax_cc' : argmax_cc_predict,
+predict_map = {'argmax': argmax_predict,
 			   'line_dect': line_detection}
 
 output_stride_params = { 16: dict(replace_stride_with_dilation=[False, False, True], rates=[6, 12, 18]),
@@ -28,26 +25,11 @@ def get_model(n_classes, cfg, aux=False):
 	kw_backbone_args.update(return_layers=return_layers)
 	pretrained_model = load_pretrained_model(kw_backbone_args)
 	
-	predict_key = cfg.get('predict', 'default')
+	predict_key = cfg.get('predict', 'argmax')
 	out_planes_skip = cfg.get('out_planes_skip', 48)
 	model = models_map[cfg['name']](n_classes, 
 									pretrained_model, 
 									predict_map[predict_key], 
 									aux=aux, 
 									out_planes_skip=out_planes_skip)
-	if 'dilation' in cfg:
-		_dilate_conv = lambda m : dilate_conv(m, cfg['dilation'])
-		model.apply(_dilate_conv)
 	return model
-
-
-def dilate_conv(m, dilation_factor):
-	if isinstance(m, nn.Conv2d):
-		if m.kernel_size[0] > 1:
-			dilation = np.array(m.dilation) * dilation_factor
-			m.dilation = tuple(dilation.tolist())
-			pading = dilation if m.kernel_size[0] == 3 else 3 * dilation
-			m.padding = tuple(pading.tolist())
-	elif isinstance(m, nn.MaxPool2d):
-		m.kernel_size = m.kernel_size * dilation_factor + 1
-		m.padding = int(m.kernel_size / 2)
