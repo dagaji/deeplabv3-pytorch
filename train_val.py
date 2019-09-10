@@ -119,16 +119,17 @@ if __name__ == "__main__":
 			for phase in ['train', 'val']:
 
 				if phase == 'train':
-					train(model_train, 
-						train_dataloader, 
-						criterion, 
-						optimizer, 
-						scheduler, 
-						device, 
-						training_cfg)
+					print("TRAIN")
+					# train(model_train, 
+					# 	train_dataloader, 
+					# 	criterion, 
+					# 	optimizer, 
+					# 	scheduler, 
+					# 	device, 
+					# 	training_cfg)
 
 				elif (epoch + 1) % val_cfg['val_epochs'] == 0:
-					checkpoint_saver.save_checkpoint(epoch, model_train, optimizer)
+					#checkpoint_saver.save_checkpoint(epoch, model_train, optimizer)
 
 					for val_exper_name, val_exper in val_expers.items():
 						val_model, val_dataloader = val_exper['model_val'], val_exper['val_dataloader']

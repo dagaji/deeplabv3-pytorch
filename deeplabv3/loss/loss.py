@@ -23,6 +23,26 @@ def hist_loss(inputs, data):
 	print("seg_loss: {}".format(seg_loss.item()))
 	return seg_loss + 0.4 * hist_loss
 
+@register.attach('hist_lossv2')
+def hist_loss(inputs, data):
+
+	seg_inputs = inputs['seg']
+	seg_loss = multitask(seg_inputs, data)
+
+	hist_inputs = inputs['hist']
+	bs = hist_inputs.shape[0]
+	hist_gt = data['hist_gt'].to(hist_inputs.device)
+	hist_loss = []
+	for _hist, _gt in zip(hist_inputs, hist_gt):
+		prob = (_hist * _gt).sum()
+		hist_loss.append(torch.clamp(0.5 - prob, min=0.0) * (_gt.sum() > 0.5).float())
+		print("hist score: {}".format(prob.cpu().detach().numpy()))
+
+	hist_loss =  sum(hist_loss) / hist_inputs.shape[0]
+
+	print("seg_loss: {}".format(seg_loss.item()))
+	return seg_loss + 0.25 * hist_loss
+
 
 @register.attach('multitask')
 def multitask(inputs, data):

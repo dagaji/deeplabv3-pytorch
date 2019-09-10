@@ -137,6 +137,18 @@ def create_grid(sz, lines, width=8):
 	grid2 = (grid[...,-1] == 255).astype(np.uint8)
 	return grid2
 
+def compute_hist(hspace, angles, bin_length=10):
+
+    M, N = hspace.shape
+    hist = np.zeros(int(N/bin_length), dtype=float)
+    j = 0
+    bins_edges = []
+    for i in range(0, N, bin_length):
+        hist[j] = np.sum(hspace[:,i:i+bin_length])
+        bins_edges.append(angles[i])
+        j += 1
+    return hist, np.rad2deg(bins_edges)
+
 
 def get_anchors(orientation, M, sz, is_vertical):
 

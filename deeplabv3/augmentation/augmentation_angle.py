@@ -34,8 +34,6 @@ class Compose(object):
     def __call__(self, img, mask, angles=None):
         for aug in self.augmentations:
             img, mask, angles = aug(img, mask, angles)
-        if angles is None:
-            return img, mask
         return img, mask, angles
 
 

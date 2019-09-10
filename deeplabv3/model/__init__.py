@@ -12,7 +12,8 @@ models_map = {'deeplabv3' : Deeplabv3,
 predict_map = {'multilabel': multilabel_predict,
 			   'erode': erode_predict,
 			   'default': argmax_predict,
-			   'argmax_cc' : argmax_cc_predict}
+			   'argmax_cc' : argmax_cc_predict,
+			   'line_dect': line_detection}
 
 output_stride_params = { 16: dict(replace_stride_with_dilation=[False, False, True], rates=[6, 12, 18]),
 						 8:  dict(replace_stride_with_dilation=[False, True, True],  rates=[12, 24, 36]),

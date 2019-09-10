@@ -6,6 +6,9 @@ import numpy as np
 import pdb
 import json
 import torch
+import matplotlib
+matplotlib.use('tkagg')
+import matplotlib.pyplot as plt
 
 def makedir(_dir):
 	if not os.path.exists(_dir):
@@ -48,6 +51,9 @@ class ResultsSaver:
 		save_path = os.path.join(self.save_dir_vis, img_id)
 		img = cv2.imread(img_path)
 		vis_img = vis_seg(img, np.squeeze(pred), self.palette)
+		plt.figure()
+		plt.imshow(vis_img[...,::-1])
+		plt.show()
 		cv2.imwrite(save_path, vis_img)
 
 	def save_score(self, per_class_iu):
