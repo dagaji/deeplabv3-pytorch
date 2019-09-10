@@ -1,12 +1,10 @@
 from .deeplab import *
 from .predict import *
-from .hist import *
 import torch.nn as nn
 
 models_map = {'deeplabv3' : Deeplabv3,
 			  'deeplabv3+1' : Deeplabv3Plus1,
 			  'deeplabv3+2' : Deeplabv3Plus2,
-			  'hist': Deeplabv3PlusHist,
 			  }
 
 predict_map = {'argmax': argmax_predict,
