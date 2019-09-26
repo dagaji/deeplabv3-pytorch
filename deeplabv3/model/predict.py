@@ -62,7 +62,7 @@ def line_detection(x, kernel=np.ones((3,3), np.uint8), iterations=5):
 			resol = 90 / 1000.0
 			hist, bins_edges = lines.compute_hist(hspace, angles, bin_length=bin_length)
 			max_angle = (2 * bins_edges[np.argmax(hist)] + bin_length * resol) / 2
-			angles_fine_h = (max_angle - 2.5 * bin_length * resol, max_angle + 2.5 * bin_length * resol)
+			angles_fine_h = (max_angle -   bin_length * resol, max_angle + bin_length * resol)
 			angles_fine_v = (angles_fine_h[0] + 90, angles_fine_h[1] + 90)
 
 			# plt.figure()

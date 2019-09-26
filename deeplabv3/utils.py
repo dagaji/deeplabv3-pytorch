@@ -29,6 +29,20 @@ def get_cfgs(config_path):
 	        print(exc)
 	return None
 
+def get_cfgs_video(config_path):
+
+	exper_name = os.path.basename(config_path).split('.')[0]
+
+	with open(config_path, 'r') as stream:
+	    try:
+	        config = yaml.safe_load(stream)
+	        num_classes = config["num_classes"]
+	        video_cfg = config["video"]
+	        return num_classes, video_cfg
+	    except yaml.YAMLError as exc:
+	        print(exc)
+	return None
+
 
 
 # if __name__ == "__main__":

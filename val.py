@@ -138,18 +138,20 @@ if __name__ == "__main__":
 			current_epoch = 0
 
 		results_dir = os.path.join('results', args.dataset, 'partition_{}', exper_name).format(partition_number)
-		saver_factory = ResultsSaverFactory(num_classes, results_dir, current_epoch)
+		#saver_factory = ResultsSaverFactory(num_classes, results_dir, current_epoch)
 
 		for val_exper_name, val_exper in val_expers.items():
 			print('>> {}'.format(val_exper_name))
 			val_model, val_dataloader = val_exper['model_val'], val_exper['val_dataloader']
-			root_folder = val_dataloader.dataset.root
-			results_saver = saver_factory.get_saver(val_exper_name, 
-																root_folder, 
-																0)
+			# root_folder = val_dataloader.dataset.root
+			# results_saver = saver_factory.get_saver(val_exper_name, 
+			# 													root_folder, 
+			# 													0)
+			
 			val_model.load_state_dict(model_train.state_dict(), strict=False)
 			validate(val_model, 
 				val_dataloader, 
 				num_classes, 
 				device, saver=results_saver)
+
 

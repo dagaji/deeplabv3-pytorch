@@ -60,3 +60,73 @@ validation:
             name: 'deeplabv3+1'
             stride: 8
             predict: 'line_dect'
+
+        # - name: 'res1000_s8_video'
+        #   dataset:
+        #     name: 'video_dataset'
+        #     params:
+        #         video_path: '/home/davidgj/projects/videos_aerodromo/PCI-RWY-20-3-90-001Marugan.MOV'
+        #         start_time: '0:25'
+        #         end_time: '0:50'
+        #         camera_name: "DJI"
+        #   save_path: 'PCI-RWY-20-3-90-001Marugan-seg.MOV'
+        #   model:
+        #     name: 'deeplabv3+1'
+        #     stride: 4
+
+        # - name: 'res1000_s8_video'
+        #   dataset:
+        #     name: 'video_dataset'
+        #     params:
+        #         video_path: '/home/davidgj/projects/videos/APR-25-5-90-004.MOV'
+        #         start_time: '0:25'
+        #         end_time: '1:10'
+        #         camera_name: "zenmuseZ3"
+        #   save_path: 'APR-25-5-90-004-seg.MOV'
+        #   model:
+        #     name: 'deeplabv3+1'
+        #     stride: 4
+        #     predict: 'line_dect'
+
+video:
+
+    videos-info:
+        - name: "Marugan"
+          checkpoint: "APR_TAX_RWY/partition_1"
+          params:
+            video_path: '/home/davidgj/projects/videos_aerodromo/PCI-RWY-20-3-90-001Marugan.MOV'
+            start_time: '0:25'
+            end_time: '0:50'
+            camera_name: "DJI"
+
+        - name: "APR-004"
+          checkpoint: "APR_TAX_RWY/partition_3"
+          params:
+            video_path: '/home/davidgj/projects/videos/APR-25-5-90-004.MOV'
+            start_time: '0:25'
+            end_time: '1:10'
+            camera_name: "zenmuseZ3"
+    
+    expers:
+
+        - name: 's4'
+          model:
+            name: 'deeplabv3+1'
+            stride: 4
+
+        - name: 's4-line'
+          model:
+            name: 'deeplabv3+1'
+            stride: 4
+            predict: 'line_dect'
+
+        - name: 's8'
+          model:
+            name: 'deeplabv3+1'
+            stride: 8
+
+        - name: 's8-line'
+          model:
+            name: 'deeplabv3+1'
+            stride: 8
+            predict: 'line_dect'

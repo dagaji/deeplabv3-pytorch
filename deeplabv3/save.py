@@ -84,3 +84,30 @@ class CheckpointSaver:
             'epoch': epoch,
             'model_state_dict': model.state_dict(),
             'optimizer_state_dict': optimizer.state_dict()}, checkpoint_path)
+
+class VideoSaver:
+
+	def __init__(self, n_classes, save_path, fps=10.0):
+		self.palette = make_palette(n_classes)
+		self.save_path = save_path
+		self.fps = int(fps)
+		self.out = None
+		
+	def save_frame(self, img, pred):
+		img = np.squeeze(img)
+		pred = np.squeeze(pred)
+		if self.out is None:
+			fourcc = cv2.VideoWriter_fourcc(*'XVID')
+			self.out = cv2.VideoWriter(self.save_path, fourcc, self.fps, img.shape[:2][::-1])
+		# plt.imshow(vis_seg(img, pred, self.palette))
+		# plt.show()
+		self.out.write(vis_seg(img, pred, self.palette))
+
+	def save_video(self):
+		if self.out is not None:
+			self.out.release()
+			self.out = None
+
+
+
+
