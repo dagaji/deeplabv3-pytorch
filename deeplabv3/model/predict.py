@@ -10,6 +10,7 @@ import matplotlib
 matplotlib.use('tkagg')
 import matplotlib.pyplot as plt
 from skimage.transform import hough_line
+from scipy.signal import find_peaks
 
 def getLargestCC(labels, segmentation):
     return np.argmax(np.bincount(labels.flat, weights=segmentation.flat))
@@ -24,14 +25,9 @@ def argmax_predict(x):
 
 def line_detection(x, kernel=np.ones((3,3), np.uint8), iterations=5):
 
-	angle_range_coarse = (45.0, 135.0)
 	APR_prob = F.softmax(x, dim=1).cpu().numpy().squeeze()[:2].sum(0)
-	# plt.figure()
-	# plt.imshow(APR_prob)
 	pred = np.squeeze(argmax_predict(x).cpu().numpy())
 	pred_1 = (pred == 1).astype(np.uint8)
-	# plt.figure()
-	# plt.imshow(pred_1)
 	APR_pred = np.logical_or(pred == 0, pred == 1)
 
 	if np.any(APR_pred):
@@ -53,32 +49,39 @@ def line_detection(x, kernel=np.ones((3,3), np.uint8), iterations=5):
 	
 			pred_1 = cv2.erode(pred_1, kernel, iterations=iterations)
 
-			angles_coarse = np.linspace(np.deg2rad(45), np.deg2rad(135), 1000)
+			angles_coarse = np.linspace(np.deg2rad(-45), np.deg2rad(135), 180)
 			hspace, angles, distances = hough_line(pred_1, angles_coarse)
 			tresh = np.max(hspace) * 0.1
 			hspace[hspace < tresh] = 0
 
-			bin_length = 50
-			resol = 90 / 1000.0
+			bin_length = 5
+			resol = 1.0
 			hist, bins_edges = lines.compute_hist(hspace, angles, bin_length=bin_length)
-			max_angle = (2 * bins_edges[np.argmax(hist)] + bin_length * resol) / 2
-			angles_fine_h = (max_angle -   bin_length * resol, max_angle + bin_length * resol)
-			angles_fine_v = (angles_fine_h[0] + 90, angles_fine_h[1] + 90)
+			hist_peaks, prop = find_peaks(hist, height=0.1 * max(hist))
+			indices = np.argsort(prop['peak_heights'])[::-1]
+			hist_peaks = hist_peaks[indices] * bin_length * resol - 45.0
 
-			# plt.figure()
-			# plt.imshow(pred_1)
-			# plt.figure()
-			# plt.plot(hist)
-			# plt.show()
+			main_peaks = None
+			for peak in hist_peaks.tolist():
+				dist = np.abs(hist_peaks - peak)
+				pair_peaks_loc = np.logical_and((90 - bin_length * resol) <= dist,
+				                                 dist <= (90 + bin_length * resol))
+				if np.any(pair_peaks_loc):
+					pair_peak = hist_peaks[pair_peaks_loc][0]
+					main_peaks = (peak, pair_peak)
+					break
+					
+			if main_peaks is not None:
 
-			_, angles_h, dist_h = lines.search_lines(pred_1, angles_fine_h, npoints=1000, min_distance=100, min_angle=300, threshold=None)
-			_, angles_v, dist_v = lines.search_lines(pred_1, angles_fine_v, npoints=1000, min_distance=100, min_angle=300, threshold=None)
+				detected_lines = []
+				for peak in main_peaks:
+					center_angle = (2 * peak + bin_length * resol) / 2
+					angles_range = (center_angle - 2 * bin_length * resol, center_angle + 2 * bin_length * resol)
+					_, line_angles, line_dist = lines.search_lines(pred_1, angles_range, npoints=1000, min_distance=100, min_angle=300, threshold=None)
+					detected_lines += lines.get_lines(line_dist, line_angles)
 
-			lines_h = lines.get_lines(dist_h, angles_h)
-			lines_v = lines.get_lines(dist_v, angles_v)
-
-			grid = lines.create_grid(pred.shape, lines_h + lines_v, width=16) * APR_pred
-			pred[APR_pred] = grid[APR_pred]
+				grid = lines.create_grid(pred.shape, detected_lines, width=16) * APR_pred
+				pred[APR_pred] = grid[APR_pred]
 
 	pred = pred[np.newaxis,...]
 	return torch.cuda.LongTensor(pred)

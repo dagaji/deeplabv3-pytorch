@@ -29,6 +29,8 @@ from deeplabv3.save import ResultsSaverFactory, CheckpointSaver, VideoSaver
 from pathlib import Path
 import time
 
+
+
 def get_last_checkpoint(checkpoint_dir):
 
 	if not os.path.exists(checkpoint_dir):
@@ -41,12 +43,6 @@ def get_last_checkpoint(checkpoint_dir):
 		last_checkpoint_path = str(sorted(checkpoints_globs, key=key, )[-1])
 		return last_checkpoint_path
 
-# def get_dataloader(id_list_path, dataset_cfg, batch_size, shuffle=True):
-
-# 	dataset_params = dict(dataset_cfg['params'])
-# 	dataset_params.update(id_list_path=id_list_path)
-# 	dataset = get_dataset(dataset_cfg['name'])(**dataset_params)
-# 	return torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, num_workers=0)
 
 def get_dataloader(dataset_cfg):
 	dataset_params = dict(dataset_cfg)
@@ -81,6 +77,7 @@ def validate(val_model, val_loader, num_classes, device, saver=None):
 
 	if saver is not None:
 		saver.save_video()
+
 
 if __name__ == "__main__":
 
@@ -127,53 +124,5 @@ if __name__ == "__main__":
 				val_dataloader, 
 				num_classes, 
 				device, saver=results_saver)
-
-
-
-
-
-	
-	# for glob in Path(os.path.join(dataset_dir)).glob("*"):
-
-	# 	partition_dir = str(glob)
-	# 	partition_number = int(glob.parts[-1].split("_")[-1])
-
-	# 	if args.partitions is not None:
-	# 		if partition_number not in args.partitions:
-	# 			continue
-	# 	print('>> Partition {}'.format(partition_number))
-	# 	print()
-
-	# 	partition = os.path.join(dataset_dir, 'partition_{}').format(partition_number)
-	# 	_id_list_path = os.path.join(partition, '{}.txt')
-
-	# 	model_train = get_model(num_classes, training_cfg["model"], training_cfg['aux_loss']).to(device)
-
-	# 	val_expers = {}
-	# 	for _val_exper in val_cfg['val_expers']:
-	# 		if "video" in _val_exper['name']:
-	# 			model_val = get_model(num_classes, _val_exper["model"]).to(device)
-	# 			val_dataloader = get_dataloader(_val_exper['dataset'], shuffle=False)
-	# 			val_expers[_val_exper['name']] = dict(model_val=model_val, val_dataloader=val_dataloader, save_path=_val_exper["save_path"])
-
-	# 	checkpoint_dir = os.path.join('checkpoint', args.dataset, 'partition_{}', exper_name).format(partition_number)
-	# 	last_checkpoint_path = get_last_checkpoint(checkpoint_dir)
-	# 	if last_checkpoint_path is not None:
-	# 		print("CHECKPOINT")
-	# 		last_checkpoint = torch.load(last_checkpoint_path)
-	# 		model_train.load_state_dict(last_checkpoint["model_state_dict"])
-	# 		current_epoch = last_checkpoint["epoch"]
-	# 	else:
-	# 		current_epoch = 0
-
-	# 	for val_exper_name, val_exper in val_expers.items():
-	# 		print('>> {}'.format(val_exper_name))
-	# 		val_model, val_dataloader = val_exper['model_val'], val_exper['val_dataloader']
-	# 		results_saver = VideoSaver(num_classes, val_exper["save_path"])
-	# 		val_model.load_state_dict(model_train.state_dict(), strict=False)
-	# 		validate(val_model, 
-	# 			val_dataloader, 
-	# 			num_classes, 
-	# 			device, saver=results_saver)
 
 

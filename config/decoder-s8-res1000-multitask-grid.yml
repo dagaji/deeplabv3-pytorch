@@ -104,7 +104,8 @@ video:
           params:
             video_path: '/home/davidgj/projects/videos/APR-25-5-90-004.MOV'
             start_time: '0:25'
-            end_time: '1:10'
+            end_time: '0:30'
+            # end_time: '1:10'
             camera_name: "zenmuseZ3"
     
     expers:
