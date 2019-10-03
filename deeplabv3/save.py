@@ -96,12 +96,13 @@ class VideoSaver:
 	def save_frame(self, img, pred):
 		img = np.squeeze(img)
 		pred = np.squeeze(pred)
-		if self.out is None:
-			fourcc = cv2.VideoWriter_fourcc(*'XVID')
-			self.out = cv2.VideoWriter(self.save_path, fourcc, self.fps, img.shape[:2][::-1])
-		# plt.imshow(vis_seg(img, pred, self.palette))
-		# plt.show()
-		self.out.write(vis_seg(img, pred, self.palette))
+		# if self.out is None:
+		# 	fourcc = cv2.VideoWriter_fourcc(*'XVID')
+		# 	self.out = cv2.VideoWriter(self.save_path, fourcc, self.fps, img.shape[:2][::-1])
+		plt.figure()
+		plt.imshow(vis_seg(img, pred, self.palette))
+		plt.show()
+		# self.out.write(vis_seg(img, pred, self.palette))
 
 	def save_video(self):
 		if self.out is not None:

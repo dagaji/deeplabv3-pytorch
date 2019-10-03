@@ -8,6 +8,37 @@ import deeplabv3.vis as vis
 import math
 from scipy.spatial import distance
 
+# def points2line_eq(point1, point2):
+
+# 	point1 = np.array(point1)
+# 	point2 = np.array(point2)
+# 	b, a = (point2 - point1).tolist()
+# 	c = a * point1[0] + b * point1[1]
+# 	return a, b, c
+
+# def points2line_eq(point1, point2):
+
+# 	x1, y1 = point1
+# 	x2, y2 = point2
+
+# 	angle = np.arctan(float(y2 - y1)/float(x2 - x1))
+
+# 	a = np.cos(angle)
+# 	b = np.sin(angle)
+# 	c = -(a * x1 + b * y1)
+# 	return a, b, c
+
+def points2line_eq(point1, point2):
+
+	x1, y1 = point1
+	x2, y2 = point2
+
+	a = float(y2 - y1)
+	b = float(x1 - x2)
+	c = -(a * x1 + b * y1)
+	scale_factor = 1.0 / np.sqrt(a ** 2 + b ** 2)
+	return tuple((np.array((a, b, c)) * scale_factor).tolist())
+
 def general_form(rho, theta):
 	a = math.cos(theta)
 	b = math.sin(theta)
@@ -15,8 +46,13 @@ def general_form(rho, theta):
 	return (a,b,c)
 
 def normal_form(a,b,c):
-	theta = math.atan(b/a)
-	rho = -c
+
+	theta = np.arctan2(b,a)
+	scale_factor = 1.0 / np.sqrt(a ** 2 + b ** 2)
+	rho = -c * scale_factor
+	if rho < 0:
+		rho *= -1.0
+		theta += np.pi
 	return (rho, theta)
 
 def find_intersect(line1_coeffs, line2_coeffs):
@@ -46,13 +82,20 @@ def check_intersect(point, sz):
 	H, W = sz
 
 	if point:
-		exists_intersect = (0.0 <= point[0] <= float(W)) and (0.0 <= point[1] <= float(H))
+		exists_intersect = (-1.0 <= point[0] <= float(W+1)) and (-1.0 <= point[1] <= float(H+1))
 	else:
 		exists_intersect = False
 
 	return exists_intersect
 
-def find_intesect_borders(line_coeffs, sz, is_vertical=True):
+def find_intesect_borders(line_coeffs, sz):
+
+	def remove_intersect(intersect_points, anchor_idx):
+		intersect_points = np.array(intersect_points)
+		anchor_point = intersect_points[anchor_idx]
+		dist = np.sqrt(np.sum((anchor_point - intersect_points) ** 2, axis=1))
+		dist[anchor_idx] = np.inf
+		return intersect_points[dist > 100].tolist()
 
 	H, W = sz
 
@@ -66,20 +109,23 @@ def find_intesect_borders(line_coeffs, sz, is_vertical=True):
 	left_border_intersect = find_intersect(line_coeffs, left_border_coeffs)
 	right_border_intersect = find_intersect(line_coeffs, right_border_coeffs)
 
+
 	intersect_points = []
-	if is_vertical:
-		if check_intersect(upper_border_intersect, sz):
-			intersect_points.append(upper_border_intersect)
-		if check_intersect(lower_border_intersect, sz):
-			intersect_points.append(lower_border_intersect)
-	else:
-		if check_intersect(left_border_intersect, sz):
-			intersect_points.append(left_border_intersect)
-		if check_intersect(right_border_intersect, sz):
-			intersect_points.append(right_border_intersect)
+	if check_intersect(upper_border_intersect, sz):
+		intersect_points.append(upper_border_intersect)
+	if check_intersect(lower_border_intersect, sz):
+		intersect_points.append(lower_border_intersect)
+	if check_intersect(left_border_intersect, sz):
+		intersect_points.append(left_border_intersect)
+	if check_intersect(right_border_intersect, sz):
+		intersect_points.append(right_border_intersect)
 
 	if len(intersect_points) == 2:
 		return intersect_points
+	elif len(intersect_points) > 2:
+		intersect_points = remove_intersect(intersect_points, 0)
+		intersect_points = remove_intersect(intersect_points, 1)
+		return [tuple(intersect_points[0]), tuple(intersect_points[1])]
 	else:
 		return None
 
@@ -105,6 +151,19 @@ def search_lines(blob, angle_range, npoints=1000, min_distance=100, min_angle=30
 		accum, angles, dists = hough_line_peaks(hspace, angles, distances, min_distance=min_distance, min_angle=min_angle)
 	
 	return accum, angles, dists
+
+
+def create_grid_intersect(lines, sz):
+
+	grid = np.zeros(sz + (3,), dtype=np.uint8)
+	for line in lines:
+		pt1 = tuple(np.array(line[0]).astype(int).tolist())
+		pt2 = tuple(np.array(line[1]).astype(int).tolist())
+		cv2.line(grid, pt1, pt2, (0,0,255), 1)
+
+	grid2 = (grid[...,-1] == 255).astype(np.uint8)
+	return grid2
+
 
 
 def vis_grid(img, lines):

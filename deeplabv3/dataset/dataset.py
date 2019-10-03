@@ -80,7 +80,7 @@ class VideoLoader:
 @register.attach('video_dataset')
 class BaseDataset(data.Dataset):
 
-    def __init__(self, video_path, camera_name, start_time, end_time, fps=10.0):
+    def __init__(self, video_path, camera_name, start_time, end_time, fps=1.0):
         self.video_loader = VideoLoader(video_path, camera_name)
         start_time_msec = string2msec(start_time)
         end_time_msec = string2msec(end_time)
