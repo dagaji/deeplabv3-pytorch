@@ -1,5 +1,6 @@
 from .deeplab import *
 from .predict import *
+from .multi_frame import MultiFrameMerge
 import torch.nn as nn
 
 models_map = {'deeplabv3' : Deeplabv3,
@@ -7,9 +8,14 @@ models_map = {'deeplabv3' : Deeplabv3,
 			  'deeplabv3+2' : Deeplabv3Plus2,
 			  }
 
+# predict_map = {'argmax': argmax_predict,
+# 			   'line_dect': line_detection,
+# 			   'line_dect_multi': line_detection_multi,
+# 			   }
+
 predict_map = {'argmax': argmax_predict,
 			   'line_dect': line_detection,
-			   'line_dect_multi': line_detection_multi,
+			   'line_dect_multi': MultiFrameMerge(nframes=9),
 			   }
 
 output_stride_params = { 16: dict(replace_stride_with_dilation=[False, False, True], rates=[6, 12, 18]),

@@ -50,7 +50,7 @@ class Deeplabv3Plus1(_Deeplabv3Plus):
 											predict,
 											aux=aux)
 
-	def forward(self, x):
+	def forward(self, x, *args):
 
 		input_shape = x.shape[-2:]
 		features = self.backbone(x)
@@ -71,7 +71,7 @@ class Deeplabv3Plus1(_Deeplabv3Plus):
 				result["aux"] = x
 			return result
 		else:
-			return self.predict(x)
+			return self.predict(x, *args)
 
 
 

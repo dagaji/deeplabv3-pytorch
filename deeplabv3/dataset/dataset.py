@@ -80,7 +80,7 @@ class VideoLoader:
 @register.attach('video_dataset')
 class BaseDataset(data.Dataset):
 
-    def __init__(self, video_path, camera_name, start_time, end_time, fps=1.0):
+    def __init__(self, video_path, camera_name, start_time, end_time, fps=10.0):
         self.video_loader = VideoLoader(video_path, camera_name)
         start_time_msec = string2msec(start_time)
         end_time_msec = string2msec(end_time)
@@ -100,6 +100,31 @@ class BaseDataset(data.Dataset):
         image = TF.normalize(image, self.mean, self.var)
         image = image.numpy()
         return image, frame.astype(np.int64)
+
+@register.attach('pano_dataset')
+class BaseDataset(BaseDataset):
+
+    def _load_data(self, idx):
+        """
+        Load the image and label in numpy.ndarray
+        """
+        image_id = self.id_list[idx] + '.png'
+        img_path = os.path.join(self.root, "images", image_id)
+    
+        return image_id, img
+
+
+    def __getitem__(self, index):
+
+        image_id, image = self._load_data(index)
+        image = TF.to_tensor(image)
+        image = TF.normalize(image, self.mean, self.var)
+
+        return dict(image_id=image_id, image=image)
+
+
+
+
 
 @register.attach('base_dataset')
 class BaseDataset(data.Dataset):

@@ -11,7 +11,7 @@ training:
     dataset:
         name: 'multitask'
         params:
-            root: '/home/davidgj/projects/APR_TAX_RWY'
+            root: '/home/davidgj/projects/APR_TAX_RWY_panos'
             augmentations:
                 - pca:
                     sigma_pca: 0.05   
@@ -52,14 +52,13 @@ validation:
 
         - name: 'res1000_s8'
           dataset:
-            name: 'slim_dataset'
+            name: 'pano_dataset'
             params:
-                root: '/home/davidgj/projects/APR_TAX_RWY'
+                root: '/home/davidgj/projects/APR_TAX_RWY_panos'
                 train: False
           model:
             name: 'deeplabv3+1'
             stride: 8
-            predict: 'line_dect'
 
         # - name: 'res1000_s8_video'
         #   dataset:
