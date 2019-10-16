@@ -1,29 +1,26 @@
-num_classes: 4
+num_classes: 3
 
 # Training Configuration
 training:
 
-    batch_size: 2
+    batch_size: 1
     display_iters: 2
     iter_size: 5
 
     # Dataset Configuration
     dataset:
-        name: 'multitask'
+        name: 'base_dataset'
         params:
-            root: '/home/davidgj/projects/APR_TAX_RWY_panos'
+            root: '/home/davidgj/projects/APR_RWY_panos'
+            masks_test: False
             augmentations:
-                - pca:
-                    sigma_pca: 0.05   
+                - pca-pano:
+                    sigma_pca: 0.05
                 - random_flip:
-                - choice:
-                    - rotate:
-                        sigma_angle: 17.0
-                        w: 833
-                        h: 417
-                    - random_crop:
-                        w: 833
-                        h: 417
+                - random_crop_mosaic:
+                    bbox_scale: 0.70
+                    max_offset: 0.1
+                    resize_scale: 0.65
 
     # LR Schedule Configuration
     scheduler:
@@ -34,7 +31,7 @@ training:
             gamma: 0.9
 
     aux_loss: True
-    loss: 'multitask'
+
 
     # Model Configuration
     model:
@@ -46,16 +43,21 @@ training:
 validation:
 
     batch_size: 1
-    val_epochs: 1
+    val_epochs: 4
 
     val_expers:
 
         - name: 'res1000_s8'
           dataset:
-            name: 'pano_dataset'
+            name: 'base_dataset'
             params:
-                root: '/home/davidgj/projects/APR_TAX_RWY_panos'
-                train: False
+                root: '/home/davidgj/projects/APR_RWY_panos'
+                masks_test: False
+                augmentations:
+                    - random_crop_mosaic:
+                        bbox_scale: 1.0
+                        max_offset: 0.0
+                        resize_scale: 0.65
           model:
             name: 'deeplabv3+1'
             stride: 8

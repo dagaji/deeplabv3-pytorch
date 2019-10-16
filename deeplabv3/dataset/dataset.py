@@ -101,30 +101,6 @@ class BaseDataset(data.Dataset):
         image = image.numpy()
         return image, frame.astype(np.int64)
 
-@register.attach('pano_dataset')
-class BaseDataset(BaseDataset):
-
-    def _load_data(self, idx):
-        """
-        Load the image and label in numpy.ndarray
-        """
-        image_id = self.id_list[idx] + '.png'
-        img_path = os.path.join(self.root, "images", image_id)
-    
-        return image_id, img
-
-
-    def __getitem__(self, index):
-
-        image_id, image = self._load_data(index)
-        image = TF.to_tensor(image)
-        image = TF.normalize(image, self.mean, self.var)
-
-        return dict(image_id=image_id, image=image)
-
-
-
-
 
 @register.attach('base_dataset')
 class BaseDataset(data.Dataset):
@@ -151,7 +127,9 @@ class BaseDataset(data.Dataset):
         label_path = os.path.join(self.root, "masks_test" if self.masks_test else "masks", image_id)
 
         img = np.asarray(imread(img_path))
-        label = np.asarray(imread(label_path))[..., 0]
+        # descomentar cuando se copie imagen con imwrite
+        #label = np.asarray(imread(label_path))[..., 0]
+        label = np.asarray(imread(label_path))
         return image_id, img, label
 
 
@@ -176,6 +154,37 @@ class BaseDataset(data.Dataset):
         fmt_str = "     Dataset: " + self.__class__.__name__ + "\n"
         fmt_str += "    Root: {}".format(self.root)
         return fmt_str
+
+@register.attach('pano_dataset')
+class PanoDataset(BaseDataset):
+
+    def __init__(self, root, id_list_path, augmentations=[], change_ignore_index=False, train=True):
+        super(PanoDataset, self).__init__(root, 
+                                          id_list_path, 
+                                          augmentations=augmentations, 
+                                          masks_test=True, 
+                                          change_ignore_index=change_ignore_index)
+
+
+    def _load_data(self, idx):
+        """
+        Load the image and label in numpy.ndarray
+        """
+        image_id = self.id_list[idx]
+        img_path = os.path.join(self.root, "images", image_id)
+        img = np.asarray(imread(img_path))
+    
+        return image_id, img
+
+
+    def __getitem__(self, index):
+
+        image_id, image = self._load_data(index)
+        image = TF.to_tensor(image)
+        image = TF.normalize(image, self.mean, self.var)
+
+        return dict(image_id=image_id, image=image)
+
 
 
 @register.attach('slim_dataset')

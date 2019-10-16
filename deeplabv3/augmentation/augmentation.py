@@ -61,6 +61,47 @@ class _RandomCrop(object):
         return cropped_img, cropped_mask
 
 
+@register.attach('random_crop_mosaic')
+class _RandomCropMosaic(object):
+
+    def __init__(self, bbox_scale=0.75, max_offset=0.1, resize_scale=None):
+        self.bbox_scale = bbox_scale
+        self.max_offset = max_offset
+        self.resize_scale = resize_scale
+
+    def crop(self, img, top_border, bbox_size):
+        x_limits = (top_border[0], top_border[0] + bbox_size[0])
+        y_limits = (top_border[1], top_border[1] + bbox_size[1])
+        bbox = img[y_limits[0]:y_limits[1], x_limits[0]:x_limits[1]]
+        return bbox
+
+    def __call__(self, img, mask):
+
+        h, w = img.shape[:2]
+        bbox_size = (int(self.bbox_scale * w), int(self.bbox_scale * h))
+        offset = np.random.uniform(-1.0 * self.max_offset, self.max_offset, 1)
+        # print("offset x: {}".format(offset))
+        top_border_x = w / 2 + offset * w - bbox_size[0] / 2
+        offset = np.random.uniform(-1.0 * self.max_offset, self.max_offset, 1)
+        # print("offset y: {}".format(offset))
+        top_border_y = h / 2 + offset * h - bbox_size[1] / 2
+        top_border = (top_border_x[0].astype(int), top_border_y[0].astype(int))
+        cropped_img = self.crop(img, top_border, bbox_size)
+        cropped_mask = self.crop(mask, top_border, bbox_size)
+        if self.resize_scale is not None:
+            new_bbox_size = (int(bbox_size[0] * self.resize_scale),
+                             int(bbox_size[1] * self.resize_scale))
+            cropped_img = cv2.resize(cropped_img, new_bbox_size)
+            cropped_mask = cv2.resize(cropped_mask, new_bbox_size, interpolation=cv2.INTER_NEAREST)
+        # pdb.set_trace()
+        # plt.figure()
+        # plt.imshow(cropped_img)
+        # plt.figure()
+        # plt.imshow(cropped_mask)
+        # plt.show()
+        return cropped_img, cropped_mask
+
+
 @register.attach('random_flip')
 class _RandomFlip(object):
 
@@ -152,6 +193,7 @@ class _PCAColorAugmentation(object):
         self.perturb_gen = _get_random_gen(sigma_pca, alfa=1.0)
 
     def __call__(self, img, mask):
+        pdb.set_trace()
 
         perturb = self.perturb_gen.rvs((3,3))
         img = img.astype(float)
@@ -169,6 +211,47 @@ class _PCAColorAugmentation(object):
         pixels_rgb = np.dot(pixels_project, new_basis.T) * 255
         new_img = pixels_rgb.reshape(img.shape)
         new_img = np.clip(new_img, 0, 255).astype(np.uint8)
+
+        return new_img, mask
+
+
+@register.attach('pca-pano')
+class _PCAColorAugmentationPano(object):
+
+    def __init__(self, sigma_pca):
+        self.perturb_gen = _get_random_gen(sigma_pca, alfa=1.0)
+
+    def __call__(self, img, mask):
+
+        # plt.figure()
+        # plt.imshow(img)
+
+        perturb = self.perturb_gen.rvs((3,3))
+        pixels_mask = np.logical_and(img[...,0] == 0, img[...,1] == 0)
+        pixels_mask = np.logical_and(pixels_mask, img[...,2] == 0)
+
+        img = img.astype(float)
+
+        pixels_values = img[pixels_mask]
+        pixels_values /= 255.0
+
+        cov_matrix = np.cov(pixels_values, rowvar=False)
+        eigen_vals, pca_basis = np.linalg.eigh(cov_matrix)
+
+        pixels_values = img.reshape((-1, 3))
+        pixels_values /= 255.0
+        pixels_project = np.dot(pixels_values, pca_basis)
+
+        new_basis = pca_basis + perturb
+        new_basis /= np.sqrt(np.sum(new_basis ** 2, axis=0))[np.newaxis,:]
+
+        pixels_rgb = np.dot(pixels_project, new_basis.T) * 255
+        new_img = pixels_rgb.reshape(img.shape)
+        new_img = np.clip(new_img, 0, 255).astype(np.uint8)
+
+        # plt.figure()
+        # plt.imshow(new_img)
+        # plt.show()
 
         return new_img, mask
 
