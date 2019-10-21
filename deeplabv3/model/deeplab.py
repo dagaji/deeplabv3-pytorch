@@ -17,6 +17,77 @@ from collections import OrderedDict
 class Deeplabv3(nn.Module):
 	pass
 
+class WarpNet(nn.Module):
+	def __init__(self):
+		super(WarpNet, self).__init__()
+		self.offset_net = nn.Sequential(nn.Conv2d(2, 16, 1, 1, 0, 1, bias=True),
+								   nn.Conv2d(16, 32, 1, 1, 0, 1, bias=True),
+								   nn.Conv2d(32, 16, 1, 1, 0, 1, bias=True),
+								   nn.Conv2d(16, 2, 1, 1, 0, 1, bias=True))
+		self.offset_net.apply(init_conv)
+		self.weights = nn.Parameter(torch.zeros((1, 2048), requires_grad=True))
+		# self.weight = 0.25
+
+	def forward(self, frame_features, mosaic_features, coords):
+
+		x_frame = frame_features['out']
+		frame_shape = x_frame.shape[-2:]
+		batch_size = x_frame.shape[0]
+
+		x_mosaic = mosaic_features['out']
+		x_mosaic = F.interpolate(x_mosaic, size=frame_shape, mode='bilinear', align_corners=False)
+
+		coords = F.interpolate(coords.transpose(3,1).transpose(3,2), size=frame_shape, mode='nearest')
+		coords = coords.transpose(3,1).transpose(1,2)
+		# offset = self.offset_net(coords)
+		offset = 0.0
+
+		x_frame_sampled = F.grid_sample(x_mosaic, coords + offset)
+		weights_sigmoid = torch.sigmoid(self.weights).repeat(batch_size, 1).view(batch_size, 2048, 1, 1)
+		x_fuse = (1 - weights_sigmoid) * x_frame + weights_sigmoid * x_frame_sampled
+		#x_fuse = (1- self.weight) * x_frame + self.weight * x_frame_sampled
+
+		return x_fuse, offset
+
+
+class MosaicNet(nn.Module):
+
+	def __init__(self, frame_net, mosaic_backbone):
+		super(MosaicNet, self).__init__()
+
+		self.backbone = frame_net.backbone
+		self.aspp = frame_net.aspp
+		self.decoder = frame_net.decoder
+		self.classifier = frame_net.classifier
+		self.predict = frame_net.predict
+
+		self.mosaic_backbone = mosaic_backbone
+		self.warp_net = WarpNet()
+		
+
+	def forward(self, frame, mosaic, coords):
+
+		input_shape = frame.shape[-2:]
+		frame_features = self.backbone(frame)
+		mosaic_features = self.mosaic_backbone(mosaic)
+		x, offset = self.warp_net(frame_features, mosaic_features, coords)
+		x_low = frame_features['skip1']
+		x = self.aspp(x)
+		x = self.decoder(x, x_low)
+		x = F.interpolate(x, size=input_shape, mode='bilinear', align_corners=False)
+		x = self.classifier(x)
+		
+		if self.training:
+			result = OrderedDict()
+			result["out"] = OrderedDict()
+			result["out"]["seg"] = x
+			result["out"]["offset"] = offset
+			return result
+		else:
+			return self.predict(x, *args)
+
+		
+
 
 class _Deeplabv3Plus(nn.Module):
 	def __init__(self, n_classes, pretrained_model, decoder, predict, aux=False):

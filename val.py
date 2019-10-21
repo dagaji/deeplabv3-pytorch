@@ -82,11 +82,18 @@ def validate(val_model, val_loader, num_classes, device, saver=None):
 		# Iterate over data.
 		for _iter, data in tqdm(enumerate(val_loader), total=len(val_loader), dynamic_ncols=True):
 
-			image_id = data['image_id']
-			inputs = data['image'].to(device)
-			# labels = data['label'].to(device)
+			frame_img = data['frame_img'].to(device)
+			mosaic_img = data['mosaic_img'].to(device)
+			grid_coords = data['grid_coords'].to(device)
+			image_id = data['frame_id']
 
-			preds = val_model(inputs)
+			preds = val_model(frame_img, mosaic_img, grid_coords)
+
+			# image_id = data['image_id']
+			# inputs = data['image'].to(device)
+			# # labels = data['label'].to(device)
+
+			# preds = val_model(inputs)
 
 			# running_score.update(labels, preds)
 			if saver is not None:

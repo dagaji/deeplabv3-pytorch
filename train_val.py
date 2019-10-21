@@ -44,7 +44,7 @@ def get_last_checkpoint(checkpoint_dir):
 def parse_args():
 	parser = ArgumentParser()
 	parser.add_argument('--config', type=str, required=True)
-	parser.add_argument('--dataset', type=str, default='APR_TAX_RWY')
+	parser.add_argument('--dataset', type=str, required=True)
 	parser.add_argument('--partitions', nargs='+', type=int)
 	parser.add_argument('--num_epochs', type=int, default=1)
 	parser.add_argument('-cpu', dest='use_cpu', action='store_true')
@@ -73,7 +73,7 @@ if __name__ == "__main__":
 		partition = os.path.join(dataset_dir, 'partition_{}').format(partition_number)
 		_id_list_path = os.path.join(partition, '{}.txt')
 
-		model_train = get_model(num_classes, training_cfg["model"], training_cfg['aux_loss']).to(device)
+		model_train = get_model(num_classes, training_cfg["model"], training_cfg.get('aux_loss', False)).to(device)
 		train_dataloader = get_dataloader(_id_list_path.format('train'), training_cfg['dataset'], training_cfg['batch_size'], shuffle=True)
 
 		val_expers = {}
@@ -89,7 +89,12 @@ if __name__ == "__main__":
 			cross_entropy = nn.CrossEntropyLoss(ignore_index=255).to(device)
 			criterion = lambda x, data: cross_entropy(x, data['label'].to(device))
 		
-		params_to_update = model_train.parameters()
+		# #Solo en caso de mosaico
+		# for param in model_train.backbone.parameters():
+		# 	param.requires_grad = False
+		# for param in model_train.mosaic_backbone.parameters():
+		# 	param.requires_grad = False
+		params_to_update = [param for param in model_train.parameters() if param.requires_grad == True]
 		optimizer = optim.SGD(params_to_update, lr= 0.0005, momentum=0.9, weight_decay=1e-5)
 
 		checkpoint_dir = os.path.join('checkpoint', args.dataset, 'partition_{}', exper_name).format(partition_number)

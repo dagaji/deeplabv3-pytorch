@@ -50,10 +50,10 @@ class ResultsSaver:
 		img_path = os.path.join(self.imgs_dir, img_id)
 		save_path = os.path.join(self.save_dir_vis, img_id)
 		img = cv2.imread(img_path)
-		# Descomentar cuando panos
-		h, w = img.shape[:2]
-		new_size = (int(w * 0.65), int(h * 0.65))
-		img = cv2.resize(img, new_size)
+		# # Descomentar cuando panos
+		# h, w = img.shape[:2]
+		# new_size = (int(w * 0.65), int(h * 0.65))
+		# img = cv2.resize(img, new_size)
 		vis_img = vis_seg(img, np.squeeze(pred), self.palette)
 		# plt.figure()
 		# plt.imshow(vis_img[...,::-1])

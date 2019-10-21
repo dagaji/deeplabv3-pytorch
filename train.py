@@ -31,18 +31,29 @@ def train(train_model, train_dataloader, criterion, optimizer, scheduler, device
 	# Iterate over data.
 	for _iter, data in tqdm(enumerate(train_dataloader), total=len(train_dataloader), dynamic_ncols=True):
 
-		inputs = data['image'].to(device)
+		#Descomentar cuando sea mosaico
+		frame_img = data['frame_img'].to(device)
+		mosaic_img = data['mosaic_img'].to(device)
+		grid_coords = data['grid_coords'].to(device)
+
+		# #Descomentar cuando no sea mosaico
+		# inputs = data['image'].to(device)
 
 		with torch.set_grad_enabled(True):
 
-			outputs = train_model(inputs)
+			#Descomentar cuando sea mosaico
+			outputs = train_model(frame_img, mosaic_img, grid_coords)
+
+			# #Descomentar cuando no sea mosaico
+			# outputs = train_model(inputs)
 
 			aux_loss = 0.0
 			if 'aux' in outputs:
 				aux_loss = criterion(outputs['aux'], data)
 			loss = (criterion(outputs['out'], data) + 0.4 * aux_loss) / iter_size
 			loss.backward()
-			running_loss.update(loss.item() * iter_size, n=inputs.size(0))
+			#running_loss.update(loss.item() * iter_size, n=inputs.size(0))
+			running_loss.update(loss.item() * iter_size, n=frame_img.size(0))
 			scheduler.step()
 
 			if _iter > 0 and _iter % iter_size == 0:

@@ -31,6 +31,25 @@ def multitask(inputs, data):
 
 	return loss_3c + loss_2c
 
+@register.attach('mosaic_loss')
+def mosaic_loss(inputs, data):
+
+	def _offset_loss(tol=0.3):
+		offset = inputs['offset']
+		batch_size, _, H, W = offset.shape
+		offset = offset.view(batch_size, 2, H * W).transpose(0,1)
+		delta = offset[0] ** 2 +  offset[1] ** 2
+		return torch.clamp(delta - tol ** 2, min=0, max=tol ** 2).mean()
+
+	def _cross_entropy():
+		_inputs = inputs['seg']
+		targets = data['frame_label'].to(_inputs.device)
+		return F.cross_entropy(_inputs, targets, ignore_index=255)
+
+	# return _cross_entropy() + 0.1 * _offset_loss()
+	return _cross_entropy()
+
+
 
 
 

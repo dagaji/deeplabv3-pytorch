@@ -19,6 +19,8 @@ import deeplabv3.lines as lines
 import pickle
 import deeplabv3.vis as vis
 from scipy import ndimage
+import pickle
+from pathlib import Path
 
 def string2msec(time_string):
     time_min = int(time_string.split(':')[0])
@@ -29,8 +31,8 @@ def string2msec(time_string):
 
 
 def msec2string(time_msec):
-    time_sec = time_msec / 1000
-    time_min = time_sec / 60
+    time_sec = time_msec // 1000
+    time_min = time_sec // 60
     time_string = "{}:{:02d}".format(time_min, time_sec - time_min * 60)
     return time_string
 
@@ -219,6 +221,126 @@ class SlimDataset(BaseDataset):
         # plt.imshow(label)
         # plt.show()
         return image_id, img, label
+
+
+@register.attach('mosaic_dataset')
+class MosaicDataset(data.Dataset):
+
+    delay_msec = int(1000)
+    _params_path = os.path.join("/home/davidgj/projects/refactor", "APR_TAX_RWY_panos_2", "{}", "parameters", "offset.p")
+
+    def __init__(self, mosaic_root, img_root, id_list_path, augmentations=[]):
+        
+        self.mosaic_root = mosaic_root
+        self.img_root = img_root
+        self.mosaic_list = np.loadtxt(id_list_path, dtype=str)
+        self.mean = [0.485, 0.456, 0.406]
+        self.var = [0.229, 0.224, 0.225]
+        self.augmentations = Compose(augmentations)
+        self.setup()
+
+    def get_mid_time_frame(self, mosaic_id):
+
+        video_name, interval_string = mosaic_id.split("_")
+        end_time, start_time = interval_string.split("-")
+        nframes = (string2msec(end_time) - string2msec(start_time)) // self.delay_msec + 1
+        mid_time = msec2string(string2msec(start_time) + (nframes // 2 + nframes % 2 - 1) * self.delay_msec)
+        return "{}_{}".format(video_name, mid_time)
+
+    def setup(self,):
+
+        imgs_dir = os.path.join(self.img_root, "images")
+        imgs_name_list = [glob.parts[-1].split('.')[0] for glob in Path(imgs_dir).glob("*.png")]
+        new_mosaic_list = []
+        for mosaic_name in self.mosaic_list.tolist():
+            mid_time_frame = self.get_mid_time_frame(mosaic_name)
+            if mid_time_frame in imgs_name_list:
+                new_mosaic_list.append(mosaic_name)
+
+        self.mosaic_list = np.array(new_mosaic_list)
+
+        video_names = list(set([mosaic_name.split("_")[0] for mosaic_name in self.mosaic_list]))
+
+        self.params = {}
+        for video_name in video_names:
+            params_path = self._params_path.format(video_name)
+            with open(params_path, 'rb') as handle:
+                video_params = pickle.load(handle, encoding='latin1')
+            self.params[video_name] = video_params
+
+
+    def __len__(self):
+        return len(self.mosaic_list)
+
+
+    def _load_data(self, idx):
+        """
+        Load the image and label in numpy.ndarray
+        """
+
+        def _load_img_label(img_path, label_path):
+            img = np.asarray(imread(img_path))
+            label = np.asarray(imread(label_path))
+            return img, label
+
+        mosaic_id = self.mosaic_list[idx]
+        frame_id = self.get_mid_time_frame(mosaic_id)
+        # video_name, interval_string = mosaic_id.split("_")
+        # end_time, start_time = interval_string.split("-")
+        # nframes = (string2msec(end_time) - string2msec(start_time)) // self.delay_msec + 1
+        # mid_time = msec2string(string2msec(start_time) + (nframes // 2 + nframes % 2) * delay_msec)
+        # frame_id = "{}_{}".format(video_name, mid_time)
+
+        mosaic_img_path = os.path.join(self.mosaic_root, "images", mosaic_id + ".png")
+        mosaic_label_path = os.path.join(self.mosaic_root, "masks", mosaic_id + ".png")
+        mosaic_img, mosaic_label = _load_img_label(mosaic_img_path, mosaic_label_path)
+
+        frame_img_path = os.path.join(self.img_root, "images", frame_id + ".png")
+        frame_label_path = os.path.join(self.img_root, "masks", frame_id + ".png")
+        frame_img, frame_label = _load_img_label(frame_img_path, frame_label_path)
+        frame_label = frame_label[..., 0]
+
+        video_name, interval_string = mosaic_id.split("_")
+        grid_coords = self.params[video_name][interval_string][frame_id.split('_')[1]]
+        grid_coords = grid_coords.transpose((1,2,0))
+
+        return mosaic_id + ".png", frame_id + ".png", mosaic_img, frame_img, frame_label, grid_coords
+
+
+    def __getitem__(self, index):
+
+        def _normalize_image(image):
+            image = TF.to_tensor(image)
+            image = TF.normalize(image, self.mean, self.var)
+            image = image.numpy()
+            return image
+
+        def _normalize_grid(grid_coords, sz):
+            H, W = sz
+            grid_coords[..., 0] = grid_coords[..., 0] / (W / 2) - 1.0
+            grid_coords[..., 1] = grid_coords[..., 1] / (H / 2) - 1.0
+            return grid_coords
+
+        _, frame_id, mosaic_img, frame_img, frame_label, grid_coords = self._load_data(index)
+
+        frame_img, (frame_label, grid_coords) = self.augmentations(frame_img, frame_label, grid_coords)
+        grid_coords = _normalize_grid(grid_coords, mosaic_img.shape[:2])
+        # grid_coords = grid_coords.transpose((2,0,1))
+
+        # new_mosaic_size = (int(mosaic_label.shape[1] * self.resize_scale),
+        #                    int(mosaic_label.shape[0] * self.resize_scale))
+
+        # mosaic_img = cv2.resize(mosaic_img, new_mosaic_size, interpolation=cv2.INTER_AREA)
+        # mosaic_label = cv2.resize(mosaic_label, new_mosaic_size, interpolation=ccv2.INTER_NEAREST)
+
+        mosaic_img = _normalize_image(mosaic_img)
+        frame_img = _normalize_image(frame_img)
+
+        # mosaic_label = mosaic_label.astype(np.int64)
+        frame_label = frame_label.astype(np.int64)
+
+        # return dict(mosaic_id=mosaic_id, mosaic_img=mosaic_img, mosaic_label=mosaic_label, frame_img=frame_img, frame_label=frame_label)
+        return dict(frame_id=frame_id, frame_img=frame_img, mosaic_img=mosaic_img, grid_coords=grid_coords, frame_label=frame_label)
 
 
 @register.attach('multitask')

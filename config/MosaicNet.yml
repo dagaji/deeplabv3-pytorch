@@ -1,0 +1,61 @@
+num_classes: 4
+
+# Training Configuration
+training:
+
+    batch_size: 1
+    display_iters: 2
+    iter_size: 10
+
+    # Dataset Configuration
+    dataset:
+        name: 'mosaic_dataset'
+        params:
+            mosaic_root: '/home/davidgj/projects/APR_RWY_panos'
+            img_root: '/home/davidgj/projects/APR_TAX_RWY'
+            augmentations:
+                - random_crop:
+                    w: 633
+                    h: 317
+
+    loss: 'mosaic_loss'
+
+    # LR Schedule Configuration
+    scheduler:
+        name: 'poly_lr'
+        params:
+            max_iter: 50000
+            decay_iter: 1
+            gamma: 0.9
+
+    # Model Configuration
+    model:
+        name: 'mosaic'
+        stride: 8
+        mosaic-stride: 32
+        base_model: 'deeplabv3+1'
+        init: 'checkpoint/APR_TAX_RWY/partition_11/decoder-s8-res1000-multitask-grid/epoch_8.pth'
+            
+
+# Validation Configuration
+validation:
+
+    batch_size: 1
+    val_epochs: 1
+
+    val_expers:
+
+        - name: 'res1000_s8'
+
+          dataset:
+            name: 'mosaic_dataset'
+            params:
+                mosaic_root: '/home/davidgj/projects/APR_RWY_panos'
+                img_root: '/home/davidgj/projects/APR_TAX_RWY'
+
+          model:
+            name: 'mosaic'
+            stride: 8
+            mosaic-stride: 32
+            base_model: 'deeplabv3+1'
+            init: 'checkpoint/APR_TAX_RWY/partition_11/decoder-s8-res1000-multitask-grid/epoch_8.pth'
