@@ -1,3 +1,10 @@
 from .register import register
 import deeplabv3.loss.loss
-get_loss = register.get
+
+
+def get_loss(cfg):
+	loss = register.get(cfg['name'])
+	if 'params' in cfg:
+		return loss(**cfg['params'])
+	return loss
+

@@ -9,21 +9,25 @@ training:
 
     # Dataset Configuration
     dataset:
-        name: 'multitask'
+        name: 'hist_dataset'
         params:
             root: '/home/davidgj/projects/APR_TAX_RWY'
             augmentations:
                 - pca:
                     sigma_pca: 0.05   
                 - random_flip:
-                - choice:
-                    - rotate:
-                        sigma_angle: 17.0
-                        w: 833
-                        h: 417
-                    - random_crop:
-                        w: 833
-                        h: 417
+                - rotate:
+                    sigma_angle: 17.0
+                    w: 833
+                    h: 417
+                # - choice:
+                #     - rotate:
+                #         sigma_angle: 17.0
+                #         w: 833
+                #         h: 417
+                #     - random_crop:
+                #         w: 833
+                #         h: 417
 
     # LR Schedule Configuration
     scheduler:
@@ -33,8 +37,10 @@ training:
             decay_iter: 1
             gamma: 0.9
 
-    aux_loss: True
-    loss: 'multitask'
+    loss: 
+        name: 'hist_loss'
+        params:
+            angle_step: 5.0
 
     # Model Configuration
     model:
@@ -59,4 +65,3 @@ validation:
           model:
             name: 'deeplabv3+1'
             stride: 8
-            predict: 'line_dect'

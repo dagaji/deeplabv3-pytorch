@@ -80,7 +80,7 @@ class VideoLoader:
 
 
 @register.attach('video_dataset')
-class BaseDataset(data.Dataset):
+class VideoDataset(data.Dataset):
 
     def __init__(self, video_path, camera_name, start_time, end_time, fps=10.0):
         self.video_loader = VideoLoader(video_path, camera_name)
@@ -102,6 +102,85 @@ class BaseDataset(data.Dataset):
         image = TF.normalize(image, self.mean, self.var)
         image = image.numpy()
         return image, frame.astype(np.int64)
+
+
+@register.attach('hist_dataset')
+class HistDataset(data.Dataset):
+
+    def __init__(self, root, id_list_path, angle_step, augmentations=[], min_angle=-45, max_angle=45):
+        self.root = root
+        self.id_list = np.loadtxt(id_list_path, dtype=str)
+        self.mean = [0.485, 0.456, 0.406]
+        self.var = [0.229, 0.224, 0.225]
+        self.augmentations = Compose(augmentations)
+        self.rot_angles = np.arange(min_angle, max_angle, angle_step)
+
+
+    def _load_data(self, idx):
+        """
+        Load the image and label in numpy.ndarray
+        """
+        image_id = self.id_list[idx] + '.png'
+        img_path = os.path.join(self.root, "images", image_id)
+        label_path = os.path.join(self.root, "masks", image_id)
+        label_test_path = os.path.join(self.root, "masks_test", image_id)
+
+        img = np.asarray(imread(img_path))
+        label = np.asarray(imread(label_path))[..., 0]
+        label_test = np.asarray(imread(label_test_path))[..., 0]
+        label_test[label_test == 255] = 0
+
+        return image_id, img, label, label_test
+
+
+    def __getitem__(self, index):
+
+        image_id, img, label, label_test = self._load_data(index)
+
+        image, _label = self.augmentations(image, np.dstack((label, label_test)))
+        label, label_test = np.dsplit(_label, 2)
+
+        image = TF.to_tensor(image)
+        image = TF.normalize(image, self.mean, self.var)
+        image = image.numpy()
+
+        seg_label = label.astype(np.int64)
+
+        label_test = (label_test == 1)
+        APR_label = np.logical_or(seg_label == 0, seg_label == 1).astype(np.float32)
+        if np.any(label_test):
+
+            angle_range_v = (min_angle, max_angle)
+            angle_range_h = (min_angle + 90, max_angle + 90)
+
+            _, angles_v, dists_v = lines.search_lines(label_test, angle_range_v, npoints=1000, min_distance=100, min_angle=300, threshold=None)
+            lines_v = lines.get_lines(dists_v, angles_v)
+            hist_label1  = lines.create_grid(seg_label.shape, lines_v).astype(np.float32)
+            hist_label1 *= APR_label
+
+            _, angles_h, dists_h = lines.search_lines(label_test, angle_range_h, npoints=1000, min_distance=100, min_angle=300, threshold=None)
+            lines_h = lines.get_lines(dists_h, angles_h)
+            hist_label2  = lines.create_grid(seg_label.shape, lines_h).astype(np.float32)
+            hist_label2 *= APR_label
+
+            angle_idx = np.argmin(np.abs(self.rot_angles - np.rad2deg(angles_h).mean()))
+
+        else:
+            hist_label1 = np.zeros(seg_label.shape, dtype=np.float32)
+            hist_label2 = np.zeros(seg_label.shape, dtype=np.float32)
+            angle_idx = -1
+
+        return dict(image_id=image_id, image=image, seg_label=label, hist_label1=hist_label1, hist_label2=hist_label2, angle_idx=angle_idx)
+
+    def __len__(self):
+        return len(self.id_list)
+
+    def __repr__(self):
+        fmt_str = "     Dataset: " + self.__class__.__name__ + "\n"
+        fmt_str += "    Root: {}".format(self.root)
+        return fmt_str
+
+
 
 
 @register.attach('base_dataset')
