@@ -28,16 +28,9 @@ class WarpNet(nn.Module):
 		self.weights = nn.Parameter(torch.zeros((1, 2048), requires_grad=True))
 		# self.weight = 0.25
 
-	def forward(self, frame_features, mosaic_features, coords):
-
-		x_frame = frame_features['out']
-		frame_shape = x_frame.shape[-2:]
+	def forward(self, x_frame, x_mosaic, coords):
 		batch_size = x_frame.shape[0]
-
-		x_mosaic = mosaic_features['out']
-		x_mosaic = F.interpolate(x_mosaic, size=frame_shape, mode='bilinear', align_corners=False)
-
-		coords = F.interpolate(coords.transpose(3,1).transpose(3,2), size=frame_shape, mode='nearest')
+		coords = F.interpolate(coords.transpose(3,1).transpose(3,2), size=x_frame.shape[-2:], mode='nearest')
 		coords = coords.transpose(3,1).transpose(1,2)
 		# offset = self.offset_net(coords)
 		offset = 0.0
@@ -63,14 +56,25 @@ class MosaicNet(nn.Module):
 
 		self.mosaic_backbone = mosaic_backbone
 		self.warp_net = WarpNet()
-		
 
-	def forward(self, frame, mosaic, coords):
+	def get_device(self,):
+		return self.classifier.weight.device
+
+	def forward(self, inputs):
+
+		device = self.get_device()
+		frame = inputs['frame_img'].to(device)
+		mosaic = inputs['mosaic_img'].to(device)
+		grid_coords = inputs['grid_coords'].to(device)
 
 		input_shape = frame.shape[-2:]
 		frame_features = self.backbone(frame)
+		x_frame = frame_features['out']
 		mosaic_features = self.mosaic_backbone(mosaic)
-		x, offset = self.warp_net(frame_features, mosaic_features, coords)
+		x_mosaic = mosaic_features['out']
+		scale_factor = input_shape[0] / x_frame.shape[-2]
+		x_mosaic = F.interpolate(x_mosaic, scale_factor=scale_factor, mode='bilinear', align_corners=False)
+		x, offset = self.warp_net(x_frame, x_mosaic, grid_coords)
 		x_low = frame_features['skip1']
 		x = self.aspp(x)
 		x = self.decoder(x, x_low)
@@ -84,7 +88,7 @@ class MosaicNet(nn.Module):
 			result["out"]["offset"] = offset
 			return result
 		else:
-			return self.predict(x, *args)
+			return self.predict(x, inputs)
 
 		
 
@@ -121,8 +125,12 @@ class Deeplabv3Plus1(_Deeplabv3Plus):
 											predict,
 											aux=aux)
 
-	def forward(self, x, *args):
+	def get_device(self,):
+		return self.classifier.weight.device
 
+	def forward(self, inputs):
+
+		x = inputs['image'].to(self.get_device())
 		input_shape = x.shape[-2:]
 		features = self.backbone(x)
 		x = features["out"]
@@ -134,7 +142,8 @@ class Deeplabv3Plus1(_Deeplabv3Plus):
 		
 		if self.training:
 			result = OrderedDict()
-			result["out"] = x
+			result["out"] = OrderedDict()
+			result["out"]["out"] = x
 			if self.aux_clf is not None:
 				x = features["aux"]
 				x = self.aux_clf(x)
@@ -142,7 +151,7 @@ class Deeplabv3Plus1(_Deeplabv3Plus):
 				result["aux"] = x
 			return result
 		else:
-			return self.predict(x, *args)
+			return self.predict(x)
 
 
 

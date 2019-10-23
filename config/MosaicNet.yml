@@ -14,11 +14,9 @@ training:
             mosaic_root: '/home/davidgj/projects/APR_RWY_panos'
             img_root: '/home/davidgj/projects/APR_TAX_RWY'
             augmentations:
-                - random_crop:
-                    w: 633
-                    h: 317
-
-    loss: 'mosaic_loss'
+                - random_crop_v2:
+                    w: 833
+                    h: 417
 
     # LR Schedule Configuration
     scheduler:

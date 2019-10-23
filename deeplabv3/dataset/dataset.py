@@ -10,7 +10,7 @@ import pdb
 from torchvision import transforms
 from skimage.io import imread
 import torchvision.transforms.functional as TF
-from deeplabv3.augmentation import Compose, ComposeAngle
+from deeplabv3.augmentation import Compose, ComposeAngle, Compose_v2
 from .register import register
 import cv2
 import matplotlib.pyplot as plt
@@ -107,13 +107,15 @@ class VideoDataset(data.Dataset):
 @register.attach('hist_dataset')
 class HistDataset(data.Dataset):
 
-    def __init__(self, root, id_list_path, angle_step, augmentations=[], min_angle=-45, max_angle=45):
+    def __init__(self, root, id_list_path, angle_step=7.5, augmentations=[], min_angle=-45, max_angle=45):
         self.root = root
         self.id_list = np.loadtxt(id_list_path, dtype=str)
         self.mean = [0.485, 0.456, 0.406]
         self.var = [0.229, 0.224, 0.225]
         self.augmentations = Compose(augmentations)
         self.rot_angles = np.arange(min_angle, max_angle, angle_step)
+        self.min_angle = min_angle
+        self.max_angle = max_angle
 
 
     def _load_data(self, idx):
@@ -137,21 +139,31 @@ class HistDataset(data.Dataset):
 
         image_id, img, label, label_test = self._load_data(index)
 
-        image, _label = self.augmentations(image, np.dstack((label, label_test)))
+        image, _label = self.augmentations(img, np.dstack((label, label_test)))
         label, label_test = np.dsplit(_label, 2)
+        label = np.squeeze(label)
+        label_test = np.squeeze(label_test)
+
+        # plt.figure()
+        # plt.imshow(label)
+        # plt.figure()
+        # plt.imshow(label_test)
+        # plt.show()
+
+        # pdb.set_trace()
 
         image = TF.to_tensor(image)
         image = TF.normalize(image, self.mean, self.var)
         image = image.numpy()
 
         seg_label = label.astype(np.int64)
-
+        label_test_ = label_test.copy()
         label_test = (label_test == 1)
         APR_label = np.logical_or(seg_label == 0, seg_label == 1).astype(np.float32)
         if np.any(label_test):
 
-            angle_range_v = (min_angle, max_angle)
-            angle_range_h = (min_angle + 90, max_angle + 90)
+            angle_range_v = (self.min_angle, self.max_angle)
+            angle_range_h = (self.min_angle + 90, self.max_angle + 90)
 
             _, angles_v, dists_v = lines.search_lines(label_test, angle_range_v, npoints=1000, min_distance=100, min_angle=300, threshold=None)
             lines_v = lines.get_lines(dists_v, angles_v)
@@ -163,14 +175,20 @@ class HistDataset(data.Dataset):
             hist_label2  = lines.create_grid(seg_label.shape, lines_h).astype(np.float32)
             hist_label2 *= APR_label
 
-            angle_idx = np.argmin(np.abs(self.rot_angles - np.rad2deg(angles_h).mean()))
+            # plt.figure()
+            # plt.imshow(hist_label1)
+            # plt.figure()
+            # plt.imshow(hist_label2)
+            # plt.show()
+
+            angle_idx = np.argmin(np.abs(self.rot_angles - np.rad2deg(angles_v).mean()))
 
         else:
             hist_label1 = np.zeros(seg_label.shape, dtype=np.float32)
             hist_label2 = np.zeros(seg_label.shape, dtype=np.float32)
             angle_idx = -1
 
-        return dict(image_id=image_id, image=image, seg_label=label, hist_label1=hist_label1, hist_label2=hist_label2, angle_idx=angle_idx)
+        return dict(image_id=image_id, image=image, seg_label=seg_label, hist_label1=hist_label1, hist_label2=hist_label2, angle_idx=angle_idx)
 
     def __len__(self):
         return len(self.id_list)
@@ -308,15 +326,16 @@ class MosaicDataset(data.Dataset):
     delay_msec = int(1000)
     _params_path = os.path.join("/home/davidgj/projects/refactor", "APR_TAX_RWY_panos_2", "{}", "parameters", "offset.p")
 
-    def __init__(self, mosaic_root, img_root, id_list_path, augmentations=[]):
+    def __init__(self, mosaic_root, img_root, id_list_path, augmentations=[], resize_scale=0.5):
         
         self.mosaic_root = mosaic_root
         self.img_root = img_root
         self.mosaic_list = np.loadtxt(id_list_path, dtype=str)
         self.mean = [0.485, 0.456, 0.406]
         self.var = [0.229, 0.224, 0.225]
-        self.augmentations = Compose(augmentations)
+        self.augmentations = Compose_v2(augmentations)
         self.setup()
+        self.resize_scale = resize_scale
 
     def get_mid_time_frame(self, mosaic_id):
 
@@ -404,6 +423,7 @@ class MosaicDataset(data.Dataset):
 
         frame_img, (frame_label, grid_coords) = self.augmentations(frame_img, frame_label, grid_coords)
         grid_coords = _normalize_grid(grid_coords, mosaic_img.shape[:2])
+        mosaic_img = cv2.resize(mosaic_img, None, fx=self.resize_scale, fy=self.resize_scale, interpolation=cv2.INTER_AREA)
         # grid_coords = grid_coords.transpose((2,0,1))
 
         # new_mosaic_size = (int(mosaic_label.shape[1] * self.resize_scale),

@@ -4,6 +4,7 @@ import pdb
 from .register import register
 import numpy as np
 from deeplabv3.model.gabor import GaborConv2d
+import matplotlib.pyplot as plt
 
 
 @register.attach('multitask')
@@ -54,47 +55,53 @@ def mosaic_loss(inputs, data):
 @register.attach('hist_loss')
 class HistLoss:
 
-	def __init__(self, angle_step, max_angle=45, min_angle=-45, hist_weight=0.4):
+	def __init__(self, angle_step, max_angle=45, min_angle=-45, hist_weight=0.1, plot_filters=False):
 
 		angles = np.deg2rad(np.arange(min_angle, max_angle, angle_step))
 		self.num_angles = len(angles)
 		self.filter_bank1 = []
 		self.filter_bank2 = []
 		for angle in angles:
-			self.filter_bank1.append(GaborConv2d(angles))
-			self.filter_bank2.append(GaborConv2d(angles + np.pi/2))
+			self.filter_bank1.append(GaborConv2d(angle))
+			self.filter_bank2.append(GaborConv2d(angle + np.pi/2))
+			if plot_filters:
+				self.filter_bank2[-1].plot_filter()
+		if plot_filters:
+			plt.show()
 
 		self.hist_weight = hist_weight
 
 	def __call__(self, inputs, data):
 
 		pred = inputs['out']
-		bs = inputs.shape[0]
+		bs = pred.shape[0]
 		device = pred.device
 		seg_label = data['seg_label'].to(device)
 		hist_label1 = data['hist_label1'].to(device)
+		hist_label1 = torch.unsqueeze(hist_label1, 1)
 		hist_label2 = data['hist_label2'].to(device)
+		hist_label2 = torch.unsqueeze(hist_label2, 1)
 		angle_indices = data['angle_idx']
 
 		prob = torch.softmax(pred, dim=1).transpose(0,1)[1]
+		prob = torch.unsqueeze(prob, 1)
 
 		res1 = []
 		res2 = []
 		for gabor_filter1, gabor_filter2 in zip(self.filter_bank1, self.filter_bank2):
-
 			res1.append(gabor_filter1(prob) * hist_label1)
 			res2.append(gabor_filter2(prob) * hist_label2)
 
 		res1 = torch.cat(res1, dim=1).view(bs, self.num_angles, -1).sum(2)
-		res2 = torch.cat(res1, dim=1).view(bs, self.num_angles, -1).sum(2)
+		res2 = torch.cat(res2, dim=1).view(bs, self.num_angles, -1).sum(2)
 		hist = res1 + res2
-		hist /= (hist.sum(1).repeat([1, self.num_angles]) + 1.0)
+		hist /= (hist.sum(1).unsqueeze(1).repeat([1, self.num_angles]) + 1.0)
 
 		hist_loss = []
 		for i in np.arange(bs):
 			idx = angle_indices[i]
 			if idx >= 0:
-				hist_loss.append(hist[i, idx])
+				hist_loss.append(-1.0 * torch.log(hist[i, idx]))
 
 		return F.cross_entropy(pred, seg_label, ignore_index=255) + self.hist_weight * sum(hist_loss)
 

@@ -37,7 +37,7 @@ class Compose(object):
         return img, args
 
 
-@register.attach('random_crop')
+@register.attach('random_crop_v2')
 class _RandomCrop(object):
 
     def __init__(self, w, h):

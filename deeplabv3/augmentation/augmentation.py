@@ -129,7 +129,8 @@ class _RandomRotation(object):
         label = self.rotate_img(label, angle, self.crop_size, is_mask=True)
 
         ignore_mask = label.copy()
-        ignore_mask[label != self.aux_index] = 0
+        ignore_mask = ignore_mask[...,0]
+        ignore_mask[ignore_mask != self.aux_index] = 0
         kernel = np.ones((21,21), np.uint8)
         ignore_mask = cv2.dilate(ignore_mask, kernel, iterations=3)
         label[ignore_mask == self.aux_index] = self.ignore_index
@@ -193,7 +194,6 @@ class _PCAColorAugmentation(object):
         self.perturb_gen = _get_random_gen(sigma_pca, alfa=1.0)
 
     def __call__(self, img, mask):
-        pdb.set_trace()
 
         perturb = self.perturb_gen.rvs((3,3))
         img = img.astype(float)

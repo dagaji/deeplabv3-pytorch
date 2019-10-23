@@ -89,9 +89,9 @@ if __name__ == "__main__":
 			cross_entropy = nn.CrossEntropyLoss(ignore_index=255).to(device)
 			criterion = lambda x, data: cross_entropy(x, data['label'].to(device))
 		
-		# #Solo en caso de mosaico
-		# for param in model_train.backbone.parameters():
-		# 	param.requires_grad = False
+		#Solo en caso de mosaico
+		for param in model_train.backbone.parameters():
+			param.requires_grad = False
 		# for param in model_train.mosaic_backbone.parameters():
 		# 	param.requires_grad = False
 		params_to_update = [param for param in model_train.parameters() if param.requires_grad == True]

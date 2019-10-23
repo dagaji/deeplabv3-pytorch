@@ -88,6 +88,13 @@ class MultiFrameMerge():
 
 		return cluster_lines
 
+	def vis_lines(self, _lines):
+
+		sz = self.buffer[0][0].shape
+		plt.figure()
+		plt.imshow(create_grid(sz, _lines, width=10))
+
+
 
 	def filter_lines(self, lines1, lines2):
 			
@@ -109,7 +116,9 @@ class MultiFrameMerge():
 			angles_diff_ori1 =  np.rad2deg(self.angle_diff(ori1, angles))
 			angles_diff_ori2 =  np.rad2deg(self.angle_diff(ori2, angles))
 			is_not_outlier = np.logical_or(angles_diff_ori1 < 3.0, angles_diff_ori2 < 3.0)
+			self.vis_lines(lines1)
 			lines1 = lines1[is_not_outlier]
+			self.vis_lines(lines1)
 
 			for _line in lines2:
 				rhos = lines1[:,0]
@@ -120,6 +129,7 @@ class MultiFrameMerge():
 				lines1 = lines1[np.invert(keep)]
 
 			lines1 = lines1.tolist()
+			self.vis_lines(lines1)
 
 			if len(lines1) == 0:
 				# print("lines1 empty")
@@ -131,13 +141,18 @@ class MultiFrameMerge():
 			angle_diff_ori1 = np.rad2deg(self.angle_diff(ori1, ori_lines1))
 			angle_diff_ori1 = np.atleast_1d(angle_diff_ori1)
 			lines1_1 = lines1[angle_diff_ori1 < 5]
+			self.vis_lines(lines1_1)
 
 			angle_diff_ori2 = np.rad2deg(self.angle_diff(ori2, ori_lines1))
 			angle_diff_ori2 = np.atleast_1d(angle_diff_ori2)
 			lines1_2 = lines1[angle_diff_ori2 < 5]
+			self.vis_lines(lines1_2)
 
 			cluster_lines1_1 = self.cluster_lines(lines1_1)
 			cluster_lines1_2 = self.cluster_lines(lines1_2)
+			self.vis_lines(cluster_lines1_1)
+			self.vis_lines(cluster_lines1_1)
+			plt.show()
 
 			return cluster_lines1_1 + cluster_lines1_2 + lines2.tolist()
 

@@ -40,7 +40,7 @@ training:
     loss: 
         name: 'hist_loss'
         params:
-            angle_step: 5.0
+            angle_step: 7.5
 
     # Model Configuration
     model:
