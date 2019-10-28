@@ -144,14 +144,6 @@ class HistDataset(data.Dataset):
         label = np.squeeze(label)
         label_test = np.squeeze(label_test)
 
-        # plt.figure()
-        # plt.imshow(label)
-        # plt.figure()
-        # plt.imshow(label_test)
-        # plt.show()
-
-        # pdb.set_trace()
-
         image = TF.to_tensor(image)
         image = TF.normalize(image, self.mean, self.var)
         image = image.numpy()
@@ -159,36 +151,16 @@ class HistDataset(data.Dataset):
         seg_label = label.astype(np.int64)
         label_test_ = label_test.copy()
         label_test = (label_test == 1)
-        APR_label = np.logical_or(seg_label == 0, seg_label == 1).astype(np.float32)
+        angle_gt = np.zeros(len(self.rot_angles), dtype=np.float32)
+
         if np.any(label_test):
-
-            angle_range_v = (self.min_angle, self.max_angle)
-            angle_range_h = (self.min_angle + 90, self.max_angle + 90)
-
-            _, angles_v, dists_v = lines.search_lines(label_test, angle_range_v, npoints=1000, min_distance=100, min_angle=300, threshold=None)
+            _, angles_v, dists_v = lines.search_lines(label_test, (self.min_angle, self.max_angle), npoints=1000, min_distance=100, min_angle=300, threshold=None)
             lines_v = lines.get_lines(dists_v, angles_v)
-            hist_label1  = lines.create_grid(seg_label.shape, lines_v).astype(np.float32)
-            hist_label1 *= APR_label
+            angle_dist = np.abs(self.rot_angles - np.rad2deg(angles_v).mean())
+            angle_indices = np.argsort(angle_dist)[:2]
+            angle_gt[angle_indices.tolist()] = 1.0
 
-            _, angles_h, dists_h = lines.search_lines(label_test, angle_range_h, npoints=1000, min_distance=100, min_angle=300, threshold=None)
-            lines_h = lines.get_lines(dists_h, angles_h)
-            hist_label2  = lines.create_grid(seg_label.shape, lines_h).astype(np.float32)
-            hist_label2 *= APR_label
-
-            # plt.figure()
-            # plt.imshow(hist_label1)
-            # plt.figure()
-            # plt.imshow(hist_label2)
-            # plt.show()
-
-            angle_idx = np.argmin(np.abs(self.rot_angles - np.rad2deg(angles_v).mean()))
-
-        else:
-            hist_label1 = np.zeros(seg_label.shape, dtype=np.float32)
-            hist_label2 = np.zeros(seg_label.shape, dtype=np.float32)
-            angle_idx = -1
-
-        return dict(image_id=image_id, image=image, seg_label=seg_label, hist_label1=hist_label1, hist_label2=hist_label2, angle_idx=angle_idx)
+        return dict(image_id=image_id, image=image, seg_label=seg_label, angle_gt=angle_gt)
 
     def __len__(self):
         return len(self.id_list)

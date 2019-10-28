@@ -49,13 +49,12 @@ def mosaic_loss(inputs, data):
 		return F.cross_entropy(_inputs, targets, ignore_index=255)
 
 	return _cross_entropy() + 0.4 * _offset_loss()
-	#return _cross_entropy()
 
 
 @register.attach('hist_loss')
 class HistLoss:
 
-	def __init__(self, angle_step, max_angle=45, min_angle=-45, hist_weight=0.1, plot_filters=False):
+	def __init__(self, angle_step, max_angle=45, min_angle=-45, hist_weight=0.4, plot_filters=False):
 
 		angles = np.deg2rad(np.arange(min_angle, max_angle, angle_step))
 		self.num_angles = len(angles)
@@ -74,36 +73,32 @@ class HistLoss:
 	def __call__(self, inputs, data):
 
 		pred = inputs['out']
+		pred_1 = pred.transpose(0,1)[1].unsqueeze(1)
 		bs = pred.shape[0]
 		device = pred.device
 		seg_label = data['seg_label'].to(device)
-		hist_label1 = data['hist_label1'].to(device)
-		hist_label1 = torch.unsqueeze(hist_label1, 1)
-		hist_label2 = data['hist_label2'].to(device)
-		hist_label2 = torch.unsqueeze(hist_label2, 1)
-		angle_indices = data['angle_idx']
-
-		prob = torch.softmax(pred, dim=1).transpose(0,1)[1]
-		prob = torch.unsqueeze(prob, 1)
+		angle_gt = data['angle_gt'].to(device)
 
 		res1 = []
 		res2 = []
 		for gabor_filter1, gabor_filter2 in zip(self.filter_bank1, self.filter_bank2):
-			res1.append(gabor_filter1(prob) * hist_label1)
-			res2.append(gabor_filter2(prob) * hist_label2)
+			res1.append(gabor_filter1(pred_1))
+			res2.append(gabor_filter2(pred_1))
 
-		res1 = torch.cat(res1, dim=1).view(bs, self.num_angles, -1).sum(2)
-		res2 = torch.cat(res2, dim=1).view(bs, self.num_angles, -1).sum(2)
-		hist = res1 + res2
+		res = F.relu(torch.cat(res1, dim=1)) + F.relu(torch.cat(res2, dim=1))
+		hist = res.view(bs, self.num_angles, -1).sum(2)
 		hist /= (hist.sum(1).unsqueeze(1).repeat([1, self.num_angles]) + 1.0)
 
 		hist_loss = []
-		for i in np.arange(bs):
-			idx = angle_indices[i]
-			if idx >= 0:
-				hist_loss.append(-1.0 * torch.log(hist[i, idx]))
+		for _angle_gt, _hist in zip(angle_gt, hist):
+			if bool(_angle_gt.sum() > 0):
+				_hist_loss = (_hist * _angle_gt).sum()
+				hist_loss.append(-1.0 * torch.log(_hist_loss))
+		hist_loss = sum(hist_loss)
 
-		return F.cross_entropy(pred, seg_label, ignore_index=255) + self.hist_weight * sum(hist_loss)
+		print("hist_loss: {}".format(hist_loss.item()))
+
+		return F.cross_entropy(pred, seg_label, ignore_index=255) + self.hist_weight * hist_loss
 
 
 
