@@ -4,3 +4,5 @@
 *.MOV
 *.avi
 calib_data/*
+*.zip
+.vscode/*
