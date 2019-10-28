@@ -72,6 +72,8 @@ def parse_args():
 @timeit
 def validate(val_model, val_loader, num_classes, device, saver=None):
 
+	# pdb.set_trace()
+
 	val_model.eval()   # Set model to evaluate mode
 
 	# running_score = RunningScore(num_classes)
@@ -82,12 +84,13 @@ def validate(val_model, val_loader, num_classes, device, saver=None):
 		# Iterate over data.
 		for _iter, data in tqdm(enumerate(val_loader), total=len(val_loader), dynamic_ncols=True):
 
-			frame_img = data['frame_img'].to(device)
-			mosaic_img = data['mosaic_img'].to(device)
-			grid_coords = data['grid_coords'].to(device)
-			image_id = data['frame_id']
+			# frame_img = data['frame_img'].to(device)
+			# mosaic_img = data['mosaic_img'].to(device)
+			# grid_coords = data['grid_coords'].to(device)
+			# image_id = data['frame_id']
 
-			preds = val_model(frame_img, mosaic_img, grid_coords)
+			#preds = val_model(frame_img, mosaic_img, grid_coords)
+			preds = val_model(data)
 
 			# image_id = data['image_id']
 			# inputs = data['image'].to(device)
@@ -97,7 +100,7 @@ def validate(val_model, val_loader, num_classes, device, saver=None):
 
 			# running_score.update(labels, preds)
 			if saver is not None:
-				saver.save_vis(image_id, preds.cpu().numpy())
+				saver.save_vis(data['frame_id'], preds.cpu().numpy())
 
 	# per_class_iu = running_score.get_pre_class_iu()
 	# print('Per_class IoU: {}'.format(per_class_iu))

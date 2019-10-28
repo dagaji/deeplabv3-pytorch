@@ -326,7 +326,7 @@ class MosaicDataset(data.Dataset):
     delay_msec = int(1000)
     _params_path = os.path.join("/home/davidgj/projects/refactor", "APR_TAX_RWY_panos_2", "{}", "parameters", "offset.p")
 
-    def __init__(self, mosaic_root, img_root, id_list_path, augmentations=[], resize_scale=0.5):
+    def __init__(self, mosaic_root, img_root, id_list_path, augmentations=[], resize_scale=0.25):
         
         self.mosaic_root = mosaic_root
         self.img_root = img_root
@@ -382,12 +382,10 @@ class MosaicDataset(data.Dataset):
             return img, label
 
         mosaic_id = self.mosaic_list[idx]
-        frame_id = self.get_mid_time_frame(mosaic_id)
-        # video_name, interval_string = mosaic_id.split("_")
-        # end_time, start_time = interval_string.split("-")
-        # nframes = (string2msec(end_time) - string2msec(start_time)) // self.delay_msec + 1
-        # mid_time = msec2string(string2msec(start_time) + (nframes // 2 + nframes % 2) * delay_msec)
-        # frame_id = "{}_{}".format(video_name, mid_time)
+
+        video_name, interval_string = mosaic_id.split("_")
+        mid_time = list(self.params[video_name][interval_string].keys())[0]
+        frame_id = video_name + "_" + mid_time
 
         mosaic_img_path = os.path.join(self.mosaic_root, "images", mosaic_id + ".png")
         mosaic_label_path = os.path.join(self.mosaic_root, "masks", mosaic_id + ".png")
@@ -398,8 +396,7 @@ class MosaicDataset(data.Dataset):
         frame_img, frame_label = _load_img_label(frame_img_path, frame_label_path)
         frame_label = frame_label[..., 0]
 
-        video_name, interval_string = mosaic_id.split("_")
-        grid_coords = self.params[video_name][interval_string][frame_id.split('_')[1]]
+        grid_coords = self.params[video_name][interval_string][mid_time]
         grid_coords = grid_coords.transpose((1,2,0))
 
         return mosaic_id + ".png", frame_id + ".png", mosaic_img, frame_img, frame_label, grid_coords
@@ -423,22 +420,14 @@ class MosaicDataset(data.Dataset):
 
         frame_img, (frame_label, grid_coords) = self.augmentations(frame_img, frame_label, grid_coords)
         grid_coords = _normalize_grid(grid_coords, mosaic_img.shape[:2])
-        mosaic_img = cv2.resize(mosaic_img, None, fx=self.resize_scale, fy=self.resize_scale, interpolation=cv2.INTER_AREA)
-        # grid_coords = grid_coords.transpose((2,0,1))
-
-        # new_mosaic_size = (int(mosaic_label.shape[1] * self.resize_scale),
-        #                    int(mosaic_label.shape[0] * self.resize_scale))
-
-        # mosaic_img = cv2.resize(mosaic_img, new_mosaic_size, interpolation=cv2.INTER_AREA)
-        # mosaic_label = cv2.resize(mosaic_label, new_mosaic_size, interpolation=ccv2.INTER_NEAREST)
-
+        # print("mosaic_size:{}".format(mosaic_img.shape))
+        mosaic_img = cv2.resize(mosaic_img, None, fx=0.25, fy=0.25, interpolation=cv2.INTER_AREA)
+        # print("mosaic_size:{}".format(mosaic_img.shape))
         mosaic_img = _normalize_image(mosaic_img)
         frame_img = _normalize_image(frame_img)
 
-        # mosaic_label = mosaic_label.astype(np.int64)
         frame_label = frame_label.astype(np.int64)
 
-        # return dict(mosaic_id=mosaic_id, mosaic_img=mosaic_img, mosaic_label=mosaic_label, frame_img=frame_img, frame_label=frame_label)
         return dict(frame_id=frame_id, frame_img=frame_img, mosaic_img=mosaic_img, grid_coords=grid_coords, frame_label=frame_label)
 
 

@@ -64,7 +64,7 @@ def _get_model_mosaic(n_classes, cfg, aux=False):
 										   predict_map[predict_key], 
 										   aux=aux, 
 										   out_planes_skip=out_planes_skip)
-	base_model.load_state_dict(torch.load(cfg['init'])["model_state_dict"], strict=False)
+	#base_model.load_state_dict(torch.load(cfg['init'])["model_state_dict"], strict=False)
 
 	mosaic_backbone = _load_pretrained_model(cfg['mosaic-stride']).backbone
 

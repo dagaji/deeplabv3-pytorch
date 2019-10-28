@@ -90,8 +90,8 @@ if __name__ == "__main__":
 			criterion = lambda x, data: cross_entropy(x, data['label'].to(device))
 		
 		#Solo en caso de mosaico
-		for param in model_train.backbone.parameters():
-			param.requires_grad = False
+		# for param in model_train.backbone.parameters():
+		# 	param.requires_grad = False
 		# for param in model_train.mosaic_backbone.parameters():
 		# 	param.requires_grad = False
 		params_to_update = [param for param in model_train.parameters() if param.requires_grad == True]
@@ -135,7 +135,7 @@ if __name__ == "__main__":
 
 					for val_exper_name, val_exper in val_expers.items():
 						val_model, val_dataloader = val_exper['model_val'], val_exper['val_dataloader']
-						root_folder = val_dataloader.dataset.root
+						root_folder = val_dataloader.dataset.img_root
 						results_saver = saver_factory.get_saver(val_exper_name, 
 																root_folder, 
 																epoch)
