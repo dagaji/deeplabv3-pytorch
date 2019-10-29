@@ -12,6 +12,7 @@ training:
         name: 'hist_dataset'
         params:
             root: '/home/davidgj/projects/APR_TAX_RWY'
+            angle_step: 2.5
             augmentations:
                 - pca:
                     sigma_pca: 0.05   
@@ -20,14 +21,6 @@ training:
                     sigma_angle: 17.0
                     w: 833
                     h: 417
-                # - choice:
-                #     - rotate:
-                #         sigma_angle: 17.0
-                #         w: 833
-                #         h: 417
-                #     - random_crop:
-                #         w: 833
-                #         h: 417
 
     # LR Schedule Configuration
     scheduler:
@@ -40,7 +33,7 @@ training:
     loss: 
         name: 'hist_loss'
         params:
-            angle_step: 7.5
+            angle_step: 2.5
 
     # Model Configuration
     model:

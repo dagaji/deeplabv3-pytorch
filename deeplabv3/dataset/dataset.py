@@ -107,7 +107,7 @@ class VideoDataset(data.Dataset):
 @register.attach('hist_dataset')
 class HistDataset(data.Dataset):
 
-    def __init__(self, root, id_list_path, angle_step=7.5, augmentations=[], min_angle=-45, max_angle=45):
+    def __init__(self, root, id_list_path, angle_step, augmentations=[], min_angle=-45, max_angle=45):
         self.root = root
         self.id_list = np.loadtxt(id_list_path, dtype=str)
         self.mean = [0.485, 0.456, 0.406]
@@ -149,18 +149,37 @@ class HistDataset(data.Dataset):
         image = image.numpy()
 
         seg_label = label.astype(np.int64)
-        label_test_ = label_test.copy()
-        label_test = (label_test == 1)
+        hist_mask = np.logical_or(label == 0, label == 1).astype(np.float32)
+        hist_mask2 = np.ones(hist_mask.shape, dtype=np.float32)
         angle_gt = np.zeros(len(self.rot_angles), dtype=np.float32)
 
+        label_test = (label_test == 1)
         if np.any(label_test):
-            _, angles_v, dists_v = lines.search_lines(label_test, (self.min_angle, self.max_angle), npoints=1000, min_distance=100, min_angle=300, threshold=None)
+
+            angle_range_v = (self.min_angle, self.max_angle)
+            angle_range_h = (self.min_angle + 90, self.max_angle + 90)
+
+            _, angles_v, dists_v = lines.search_lines(label_test, angle_range_v, npoints=1000, min_distance=100, min_angle=300, threshold=None)
             lines_v = lines.get_lines(dists_v, angles_v)
+            dir1_mask  = lines.create_grid(seg_label.shape, lines_v).astype(np.float32)
+
+            _, angles_h, dists_h = lines.search_lines(label_test, angle_range_h, npoints=1000, min_distance=100, min_angle=300, threshold=None)
+            lines_h = lines.get_lines(dists_h, angles_h)
+            dir2_mask  = lines.create_grid(seg_label.shape, lines_h).astype(np.float32)
+
+            joint_mask  = (dir1_mask * dir2_mask * hist_mask).astype(np.uint8)
+            joint_mask = cv2.dilate(joint_mask, np.ones((7,7), dtype=np.uint8), iterations=5)
+            hist_mask2[joint_mask > 0] = 0.5
+
+            # plt.imshow(hist_mask2)
+            # plt.show()
+
             angle_dist = np.abs(self.rot_angles - np.rad2deg(angles_v).mean())
-            angle_indices = np.argsort(angle_dist)[:2]
+            angle_indices = np.argsort(angle_dist)[:6]
             angle_gt[angle_indices.tolist()] = 1.0
 
-        return dict(image_id=image_id, image=image, seg_label=seg_label, angle_gt=angle_gt)
+
+        return dict(image_id=image_id, image=image, seg_label=seg_label, angle_gt=angle_gt, hist_mask=hist_mask, hist_mask2=hist_mask2)
 
     def __len__(self):
         return len(self.id_list)

@@ -54,7 +54,7 @@ def mosaic_loss(inputs, data):
 @register.attach('hist_loss')
 class HistLoss:
 
-	def __init__(self, angle_step, max_angle=45, min_angle=-45, hist_weight=0.4, plot_filters=False):
+	def __init__(self, angle_step, max_angle=45, min_angle=-45, hist_weight=0.2, plot_filters=False):
 
 		angles = np.deg2rad(np.arange(min_angle, max_angle, angle_step))
 		self.num_angles = len(angles)
@@ -73,10 +73,11 @@ class HistLoss:
 	def __call__(self, inputs, data):
 
 		pred = inputs['out']
-		pred_1 = pred.transpose(0,1)[1].unsqueeze(1)
 		bs = pred.shape[0]
 		device = pred.device
 		seg_label = data['seg_label'].to(device)
+		hist_mask = data['hist_mask'].to(device).unsqueeze(1)
+		pred_1 = pred.transpose(0,1)[1].unsqueeze(1) * hist_mask
 		angle_gt = data['angle_gt'].to(device)
 
 		res1 = []
@@ -90,15 +91,29 @@ class HistLoss:
 		hist /= (hist.sum(1).unsqueeze(1).repeat([1, self.num_angles]) + 1.0)
 
 		hist_loss = []
-		for _angle_gt, _hist in zip(angle_gt, hist):
+		for _angle_gt, _hist, _res in zip(angle_gt, hist, res):
 			if bool(_angle_gt.sum() > 0):
+				print(np.where(_angle_gt.cpu().numpy()))
+				print((_hist * _angle_gt).sum())
+				for i in np.arange(len(_angle_gt)):
+					plt.figure()
+					plt.imshow(_res[i].cpu().detach().numpy().squeeze())
+				plt.show()
 				_hist_loss = (_hist * _angle_gt).sum()
 				hist_loss.append(-1.0 * torch.log(_hist_loss))
-		hist_loss = sum(hist_loss)
 
-		print("hist_loss: {}".format(hist_loss.item()))
+		hist_loss = sum(hist_loss) / max(len(hist_loss), 1)
+		seg_loss = F.cross_entropy(pred, seg_label, ignore_index=255)
 
-		return F.cross_entropy(pred, seg_label, ignore_index=255) + self.hist_weight * hist_loss
+		print("hist_loss: {}".format(hist_loss))
+		print("seg_loss: {}".format(seg_loss))
+
+		if hist_loss > 10.0:
+			pdb.set_trace()
+
+		# print("hist_loss: {}".format(hist_loss.item()))
+
+		return seg_loss + self.hist_weight * hist_loss
 
 
 
