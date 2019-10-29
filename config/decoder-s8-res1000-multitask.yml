@@ -12,7 +12,7 @@ training:
         name: 'hist_dataset'
         params:
             root: '/home/davidgj/projects/APR_TAX_RWY'
-            angle_step: 2.5
+            angle_step: 5.0
             augmentations:
                 - pca:
                     sigma_pca: 0.05   
@@ -31,13 +31,11 @@ training:
             gamma: 0.9
 
     loss: 
-        name: 'hist_loss'
-        params:
-            angle_step: 2.5
+        name: 'hist_loss_v2'
 
     # Model Configuration
     model:
-        name: 'deeplabv3+1'
+        name: 'hist'
         stride: 8
             
 

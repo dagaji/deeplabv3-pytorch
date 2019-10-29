@@ -13,6 +13,7 @@ from torchvision.models.segmentation.deeplabv3 import DeepLabV3, ASPP
 from torchvision.models.segmentation.fcn import FCN, FCNHead
 from torch.nn import functional as F
 from collections import OrderedDict
+from deeplabv3.model.gabor import GaborConv2d
 
 class Deeplabv3(nn.Module):
 	pass
@@ -106,6 +107,7 @@ class _Deeplabv3Plus(nn.Module):
 		init_conv(self.classifier)
 		self.predict = predict
 		self.aux_clf = None
+
 		if aux:
 			aux_clf = pretrained_model.aux_classifier
 			aux_clf_out = nn.Conv2d(256, n_classes, 1, 1, 0, 1, bias=False)
@@ -147,6 +149,7 @@ class Deeplabv3Plus1(_Deeplabv3Plus):
 			result["out"] = OrderedDict()
 			result["out"]["out"] = x
 			if self.aux_clf is not None:
+				pdb.set_trace()
 				x = features["aux"]
 				x = self.aux_clf(x)
 				x = F.interpolate(x, size=input_shape, mode='bilinear', align_corners=False)
@@ -156,6 +159,40 @@ class Deeplabv3Plus1(_Deeplabv3Plus):
 			return self.predict(x)
 
 
+class GaborNet(Deeplabv3Plus1):
+	def __init__(self, n_classes, pretrained_model, predict, aux=False, angle_step=5.0, max_angle=45, min_angle=-45, out_planes_skip=48):
+		super(GaborNet, self).__init__(n_classes, pretrained_model, predict, out_planes_skip=out_planes_skip, aux=aux)
+		
+		plot_filters = False
+		angles = np.deg2rad(np.arange(min_angle, max_angle, angle_step))
+		self.num_angles = len(angles)
+		self.filter_bank = []
+		for angle in angles:
+			self.filter_bank.append(GaborConv2d(angle))
+			if plot_filters:
+				self.filter_bank[-1].plot_filter()
+		if plot_filters:
+			plt.show()
+
+		self.bias = nn.Parameter(torch.ones(1, requires_grad=True))
+
+	def forward(self, inputs):
+
+		results = super(GaborNet, self).forward(inputs)
+		pred = results["out"]["out"]
+		bs = pred.shape[0]
+		pred_1 = pred.transpose(0,1)[1].unsqueeze(1)
+
+		res = []
+		for gabor_filter in self.filter_bank:
+			res.append(gabor_filter(pred_1) - 700 * self.bias)
+
+		res = F.relu(torch.cat(res, dim=1))
+		hist = res.view(bs, self.num_angles, -1).sum(2)
+		hist /= (hist.sum(1).unsqueeze(1).repeat([1, self.num_angles]) + 1.0)
+		results["out"]["hist"] = hist
+
+		return results
 
 
 class Deeplabv3Plus2(_Deeplabv3Plus):

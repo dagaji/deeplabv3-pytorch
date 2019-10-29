@@ -94,8 +94,9 @@ if __name__ == "__main__":
 		# 	param.requires_grad = False
 		# for param in model_train.mosaic_backbone.parameters():
 		# 	param.requires_grad = False
-		params_to_update = [param for param in model_train.parameters() if param.requires_grad == True]
-		optimizer = optim.SGD(params_to_update, lr= 0.0005, momentum=0.9, weight_decay=1e-5)
+		#params_to_update = [param for param in model_train.parameters() if param.requires_grad == True]
+		params_to_update = [model_train.bias]
+		optimizer = optim.SGD(params_to_update, lr=1.0, momentum=0.9, weight_decay=1e-5)
 
 		checkpoint_dir = os.path.join('checkpoint', args.dataset, 'partition_{}', exper_name).format(partition_number)
 		last_checkpoint_path = get_last_checkpoint(checkpoint_dir)

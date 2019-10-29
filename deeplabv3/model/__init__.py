@@ -7,6 +7,7 @@ models_map = {'deeplabv3' : Deeplabv3,
 			  'deeplabv3+1' : Deeplabv3Plus1,
 			  'deeplabv3+2' : Deeplabv3Plus2,
 			  'mosaic': MosaicNet,
+			  'hist': GaborNet,
 			  }
 
 # predict_map = {'argmax': argmax_predict,
@@ -47,7 +48,6 @@ def get_model(n_classes, cfg, aux=False):
 
 
 def _get_model_mosaic(n_classes, cfg, aux=False):
-
 
 	def _load_pretrained_model(stride):
 		return_layers = dict(layer4='out', layer1='skip1', layer3='aux')

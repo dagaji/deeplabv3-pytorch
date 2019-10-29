@@ -175,7 +175,7 @@ class HistDataset(data.Dataset):
             # plt.show()
 
             angle_dist = np.abs(self.rot_angles - np.rad2deg(angles_v).mean())
-            angle_indices = np.argsort(angle_dist)[:6]
+            angle_indices = np.argsort(angle_dist)[:2]
             angle_gt[angle_indices.tolist()] = 1.0
 
 

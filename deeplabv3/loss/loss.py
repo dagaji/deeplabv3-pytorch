@@ -51,20 +51,43 @@ def mosaic_loss(inputs, data):
 	return _cross_entropy() + 0.4 * _offset_loss()
 
 
+@register.attach('hist_loss_v2')
+def hist_loss(inputs, data):
+
+	pred = inputs['out']
+	hist = inputs['hist']
+	bs = pred.shape[0]
+	device = pred.device
+	seg_label = data['seg_label'].to(device)
+	angle_gt = data['angle_gt'].to(device)
+
+	hist_loss = []
+	for _angle_gt, _hist in zip(angle_gt, hist):
+		if bool(_angle_gt.sum() > 0):
+			_hist_loss = (_hist * _angle_gt).sum()
+			hist_loss.append(-1.0 * torch.log(_hist_loss))
+
+	hist_loss = sum(hist_loss) / max(len(hist_loss), 1)
+	seg_loss = F.cross_entropy(pred, seg_label, ignore_index=255)
+
+	print("hist_loss: {}".format(hist_loss))
+	print("seg_loss: {}".format(seg_loss))
+
+	return seg_loss + 0.4 * hist_loss
+
+
 @register.attach('hist_loss')
 class HistLoss:
 
-	def __init__(self, angle_step, max_angle=45, min_angle=-45, hist_weight=0.2, plot_filters=False):
+	def __init__(self, angle_step, max_angle=45, min_angle=-45, hist_weight=0.4, plot_filters=True):
 
 		angles = np.deg2rad(np.arange(min_angle, max_angle, angle_step))
 		self.num_angles = len(angles)
-		self.filter_bank1 = []
-		self.filter_bank2 = []
+		self.filter_bank = []
 		for angle in angles:
-			self.filter_bank1.append(GaborConv2d(angle))
-			self.filter_bank2.append(GaborConv2d(angle + np.pi/2))
+			self.filter_bank.append(GaborConv2d(angle))
 			if plot_filters:
-				self.filter_bank2[-1].plot_filter()
+				self.filter_bank[-1].plot_filter()
 		if plot_filters:
 			plt.show()
 
@@ -80,25 +103,23 @@ class HistLoss:
 		pred_1 = pred.transpose(0,1)[1].unsqueeze(1) * hist_mask
 		angle_gt = data['angle_gt'].to(device)
 
-		res1 = []
-		res2 = []
-		for gabor_filter1, gabor_filter2 in zip(self.filter_bank1, self.filter_bank2):
-			res1.append(gabor_filter1(pred_1))
-			res2.append(gabor_filter2(pred_1))
+		res = []
+		for gabor_filter in self.filter_bank:
+			res.append(gabor_filter(pred_1))
 
-		res = F.relu(torch.cat(res1, dim=1)) + F.relu(torch.cat(res2, dim=1))
+		res = F.relu(torch.cat(res, dim=1))
 		hist = res.view(bs, self.num_angles, -1).sum(2)
 		hist /= (hist.sum(1).unsqueeze(1).repeat([1, self.num_angles]) + 1.0)
 
 		hist_loss = []
 		for _angle_gt, _hist, _res in zip(angle_gt, hist, res):
 			if bool(_angle_gt.sum() > 0):
-				print(np.where(_angle_gt.cpu().numpy()))
-				print((_hist * _angle_gt).sum())
-				for i in np.arange(len(_angle_gt)):
-					plt.figure()
-					plt.imshow(_res[i].cpu().detach().numpy().squeeze())
-				plt.show()
+				# print(np.where(_angle_gt.cpu().numpy()))
+				# print((_hist * _angle_gt).sum())
+				# for i in np.arange(len(_angle_gt)):
+				# 	plt.figure()
+				# 	plt.imshow(_res[i].cpu().detach().numpy().squeeze())
+				# plt.show()
 				_hist_loss = (_hist * _angle_gt).sum()
 				hist_loss.append(-1.0 * torch.log(_hist_loss))
 
