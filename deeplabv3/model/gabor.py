@@ -16,6 +16,32 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 class GaborConv2d(_ConvNd):
 
+	# def __init__(self, angle, sigma_x=0.075, sigma_y=0.75, freq=2.0, in_channels=1, out_channels=1, kernel_size=51, stride=1, 
+	# 	dilation=1, groups=1, bias=False, padding_mode='zeros'):
+
+	# 	padding = (kernel_size - 1) // 2
+
+	# 	kernel_size = _pair(kernel_size)
+	# 	stride = _pair(stride)
+	# 	padding = _pair(padding)
+	# 	dilation = _pair(dilation)
+
+	# 	super(GaborConv2d, self).__init__(in_channels, out_channels, kernel_size, stride, padding, dilation, False, _pair(0), groups, bias, padding_mode)
+	# 	self.sigma_x = sigma_x * torch.ones(out_channels, in_channels, requires_grad=False).to(device)
+	# 	self.sigma_y = sigma_y * torch.ones(out_channels, in_channels, requires_grad=False).to(device)
+	# 	self.freq = freq * torch.ones(out_channels, in_channels, requires_grad=False).to(device)
+
+	# 	_weights_1 = self._compute_weights(angle)
+	# 	_weights_2 = self._compute_weights(angle + np.pi/2)
+	# 	self._weight = self.merge_weights(_weights_1, _weights_2)
+
+	# 	# mask = torch.ones(joint_mask.shape).float().to(device)
+	# 	# mask -= joint_mask.float()
+	# 	# plt.imshow(mask.cpu().detach().numpy().squeeze())
+	# 	# plt.show()
+	# 	# self._weight = (_weights_1 + _weights_2) * mask
+	# 	# self._weight = torch.clamp(self._weight, max=1.0)
+
 	def __init__(self, angle, sigma_x=0.075, sigma_y=0.75, freq=2.0, in_channels=1, out_channels=1, kernel_size=51, stride=1, 
 		dilation=1, groups=1, bias=False, padding_mode='zeros'):
 
@@ -31,9 +57,7 @@ class GaborConv2d(_ConvNd):
 		self.sigma_y = sigma_y * torch.ones(out_channels, in_channels, requires_grad=False).to(device)
 		self.freq = freq * torch.ones(out_channels, in_channels, requires_grad=False).to(device)
 
-		_weights_1 = self._compute_weights(angle)
-		_weights_2 = self._compute_weights(angle + np.pi/2)
-		self._weight = self.merge_weights(_weights_1, _weights_2)
+		self._weight = self._compute_weights(angle)
 
 		# mask = torch.ones(joint_mask.shape).float().to(device)
 		# mask -= joint_mask.float()

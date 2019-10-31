@@ -14,6 +14,7 @@ from torchvision.models.segmentation.fcn import FCN, FCNHead
 from torch.nn import functional as F
 from collections import OrderedDict
 from deeplabv3.model.gabor import GaborConv2d
+import matplotlib.pyplot as plt
 
 class Deeplabv3(nn.Module):
 	pass
@@ -194,6 +195,52 @@ class GaborNet(Deeplabv3Plus1):
 
 		return results
 
+
+class GaborNet2(Deeplabv3Plus1):
+	def __init__(self, n_classes, pretrained_model, predict, aux=False, angle_step=5.0, max_angle=25, min_angle=-25, out_planes_skip=48):
+		super(GaborNet2, self).__init__(n_classes, pretrained_model, predict, out_planes_skip=out_planes_skip, aux=aux)
+		
+		angles = np.deg2rad(np.arange(min_angle, max_angle, angle_step))
+		self.num_angles = len(angles)
+		self.filter_bank1 = []
+		self.filter_bank2 = []
+		for angle in angles:
+			self.filter_bank1.append(GaborConv2d(angle))
+			self.filter_bank2.append(GaborConv2d(angle + np.pi/2))
+
+		self.bias = nn.Parameter(torch.ones(1, requires_grad=True))
+
+		# self.plot_filter_bank(self.filter_bank1)
+		# self.plot_filter_bank(self.filter_bank2)
+
+
+
+	def plot_filter_bank(self, filter_bank):
+
+		for gabor_filter in filter_bank:
+			gabor_filter.plot_filter()
+		plt.show()
+
+	def forward(self, inputs):
+
+		results = super(GaborNet2, self).forward(inputs)
+		pred = results["out"]["out"]
+		bs = pred.shape[0]
+		pred_1 = pred.transpose(0,1)[1].unsqueeze(1)
+
+		res1 = []
+		res2 = []
+		for gabor_filter1, gabor_filter2 in zip(self.filter_bank1, self.filter_bank2):
+			res1.append(gabor_filter1(pred_1) - 100 * self.bias)
+			res2.append(gabor_filter2(pred_1) - 100 * self.bias)
+		print(self.bias)
+
+		res = F.relu(torch.cat(res1, dim=1)) + F.relu(torch.cat(res2, dim=1))
+		hist = res.view(bs, self.num_angles, -1).sum(2)
+		hist /= (hist.sum(1).unsqueeze(1).repeat([1, self.num_angles]) + 1.0)
+		results["out"]["hist"] = hist
+
+		return results
 
 class Deeplabv3Plus2(_Deeplabv3Plus):
 	def __init__(self, n_classes, pretrained_model, predict):

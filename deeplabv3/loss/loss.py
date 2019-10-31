@@ -73,7 +73,7 @@ def hist_loss(inputs, data):
 	print("hist_loss: {}".format(hist_loss))
 	print("seg_loss: {}".format(seg_loss))
 
-	return seg_loss + 0.4 * hist_loss
+	return seg_loss + 0.1 * hist_loss
 
 
 @register.attach('hist_loss')

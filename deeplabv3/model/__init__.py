@@ -8,6 +8,7 @@ models_map = {'deeplabv3' : Deeplabv3,
 			  'deeplabv3+2' : Deeplabv3Plus2,
 			  'mosaic': MosaicNet,
 			  'hist': GaborNet,
+			  'hist2': GaborNet2,
 			  }
 
 # predict_map = {'argmax': argmax_predict,
