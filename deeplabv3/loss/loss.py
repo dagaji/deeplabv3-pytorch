@@ -76,6 +76,37 @@ def hist_loss(inputs, data):
 	return seg_loss + 0.1 * hist_loss
 
 
+@register.attach('dice_loss')
+def dice_loss(inputs, data):
+
+	pred = inputs['out']
+	pred_coop = inputs['out_coop']
+	device = pred.device
+	label = data['label'].to(device)
+
+	label_s = label.clone()
+	label_s[label != 255] = torch.clamp(label_s[label != 255] - 1, min=0)
+
+	label_dice = (label == 1).float()
+	mask = (label == 0).float() + (label == 1).float()
+
+	def _dice_loss(pred, target, mask):
+		numerator = 2 * torch.sum(pred * target * mask)
+		denominator = torch.sum((pred + target) * mask)
+		return 1.0 - (numerator + 1.0) / (denominator + 1.0)
+
+	def _cross_entropy(pred, target):
+
+		probs_4class = F.softmax(pred, dim=1).transpose(0,1)
+		probs_3class = torch.stack([(probs_4class[0] + probs_4class[1]), 
+							 probs_4class[2], 
+							 probs_4class[3]]).transpose(0,1)
+		logprobs_3class = torch.log(probs_3class)
+		return F.nll_loss(logprobs_3class, targets_3classes)
+
+	return _dice_loss(pred_coop, label_dice, mask) + _cross_entropy(pred, label_s)
+
+
 @register.attach('hist_loss')
 class HistLoss:
 

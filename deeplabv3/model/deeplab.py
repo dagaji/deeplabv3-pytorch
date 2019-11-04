@@ -180,9 +180,11 @@ class GaborNet(Deeplabv3Plus1):
 	def forward(self, inputs):
 
 		results = super(GaborNet, self).forward(inputs)
-		pred = results["out"]["out"]
+		pred = results["out"]["out"].transpose(0,1)[1].unsqueeze(1)
 		bs = pred.shape[0]
-		pred_1 = pred.transpose(0,1)[1].unsqueeze(1)
+
+		pred_2 = F.interpolate(pred, size=input_shape, mode='bilinear', align_corners=False)
+		pred_4 = x = F.interpolate(pred, size=input_shape, mode='bilinear', align_corners=False)
 
 		res = []
 		for gabor_filter in self.filter_bank:
@@ -197,50 +199,78 @@ class GaborNet(Deeplabv3Plus1):
 
 
 class GaborNet2(Deeplabv3Plus1):
-	def __init__(self, n_classes, pretrained_model, predict, aux=False, angle_step=5.0, max_angle=25, min_angle=-25, out_planes_skip=48):
+	def __init__(self, n_classes, pretrained_model, predict, aux=False, angle_step=15.0, out_planes_skip=48):
 		super(GaborNet2, self).__init__(n_classes, pretrained_model, predict, out_planes_skip=out_planes_skip, aux=aux)
 		
-		angles = np.deg2rad(np.arange(min_angle, max_angle, angle_step))
+		angles = np.deg2rad(np.arange(0.0, 180.0, angle_step))
 		self.num_angles = len(angles)
-		self.filter_bank1 = []
-		self.filter_bank2 = []
+		self.filter_bank = []
 		for angle in angles:
-			self.filter_bank1.append(GaborConv2d(angle))
-			self.filter_bank2.append(GaborConv2d(angle + np.pi/2))
+			self.filter_bank.append(GaborConv2d(angle))
 
-		self.bias = nn.Parameter(torch.ones(1, requires_grad=True))
+		self.downscale = nn.AvgPool2d(2)
 
-		# self.plot_filter_bank(self.filter_bank1)
-		# self.plot_filter_bank(self.filter_bank2)
+	def plot_filter_bank(self,):
 
-
-
-	def plot_filter_bank(self, filter_bank):
-
-		for gabor_filter in filter_bank:
+		for gabor_filter in self.filter_bank:
 			gabor_filter.plot_filter()
 		plt.show()
 
 	def forward(self, inputs):
 
 		results = super(GaborNet2, self).forward(inputs)
-		pred = results["out"]["out"]
+		pred = results["out"]["out"].transpose(0,1)[1].unsqueeze(1)
+
 		bs = pred.shape[0]
-		pred_1 = pred.transpose(0,1)[1].unsqueeze(1)
+		input_shape = pred.shape[-2:]
 
-		res1 = []
-		res2 = []
-		for gabor_filter1, gabor_filter2 in zip(self.filter_bank1, self.filter_bank2):
-			res1.append(gabor_filter1(pred_1) - 100 * self.bias)
-			res2.append(gabor_filter2(pred_1) - 100 * self.bias)
-		print(self.bias)
+		pred_down2 = self.downscale(pred)
+		pred_down4 = self.downscale(pred_down2)
 
-		res = F.relu(torch.cat(res1, dim=1)) + F.relu(torch.cat(res2, dim=1))
-		hist = res.view(bs, self.num_angles, -1).sum(2)
-		hist /= (hist.sum(1).unsqueeze(1).repeat([1, self.num_angles]) + 1.0)
-		results["out"]["hist"] = hist
+		pred = pred - pred.view(bs, -1).mean(1).view(bs,1,1,1)
+		pred_down2 = pred_down2 - pred_down2.view(bs, -1).mean(1).view(bs,1,1,1)
+		pred_down4 = pred_down4 - pred_down4.view(bs, -1).mean(1).view(bs,1,1,1)
+
+		plt.figure()
+		plt.imshow(pred.cpu().detach().numpy()[0].squeeze())
+		plt.figure()
+		plt.imshow(pred_down2.cpu().detach().numpy()[0].squeeze())
+		plt.figure()
+		plt.imshow(pred_down4.cpu().detach().numpy()[0].squeeze())
+		plt.show()
+
+
+		res = []
+		for gabor_filter in self.filter_bank:
+			f_pred = gabor_filter(pred)
+			f_pred_down2 = F.interpolate(gabor_filter(pred_down2), size=input_shape, mode='bilinear', align_corners=False)
+			f_pred_down4 = F.interpolate(gabor_filter(pred_down4), size=input_shape, mode='bilinear', align_corners=False)
+			res.append(f_pred + f_pred_down2 + f_pred_down4)
+
+		res = F.relu(torch.cat(res, dim=1))
+		res = res / (res.sum(1).unsqueeze(1) + 1.0)
+
+		# for _res in res[0]:
+		# 	plt.figure()
+		# 	plt.imshow(_res.cpu().detach().numpy().squeeze())
+		# 	plt.show()
+
+		res_coop = []
+		for gabor_filter, _res in zip(self.filter_bank, res):
+			res_coop.append(gabor_filter(_res.unsqueeze(1)))
+
+		for _res in res_coop[0]:
+			plt.figure()
+			plt.imshow(_res.cpu().detach().numpy().squeeze())
+			plt.show()
+
+		pred_coop = 2 * torch.sigmoid(sum(res_coop)) - 1.0
+		pdb.set_trace()
+
+		results["out"]["out_coop"] = pred_coop
 
 		return results
+
 
 class Deeplabv3Plus2(_Deeplabv3Plus):
 	def __init__(self, n_classes, pretrained_model, predict):
