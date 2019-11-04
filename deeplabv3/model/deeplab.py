@@ -13,7 +13,7 @@ from torchvision.models.segmentation.deeplabv3 import DeepLabV3, ASPP
 from torchvision.models.segmentation.fcn import FCN, FCNHead
 from torch.nn import functional as F
 from collections import OrderedDict
-from deeplabv3.model.gabor import GaborConv2d
+from deeplabv3.model.gabor import GaborConv2d, CoopConv2d
 import matplotlib.pyplot as plt
 
 class Deeplabv3(nn.Module):
@@ -161,7 +161,7 @@ class Deeplabv3Plus1(_Deeplabv3Plus):
 
 
 class GaborNet(Deeplabv3Plus1):
-	def __init__(self, n_classes, pretrained_model, predict, aux=False, angle_step=5.0, max_angle=45, min_angle=-45, out_planes_skip=48):
+	def __init__(self, n_classes, pretrained_model, predict, aux=False, angle_step=15.0, max_angle=45, min_angle=-45, out_planes_skip=48):
 		super(GaborNet, self).__init__(n_classes, pretrained_model, predict, out_planes_skip=out_planes_skip, aux=aux)
 		
 		plot_filters = False
@@ -207,14 +207,39 @@ class GaborNet2(Deeplabv3Plus1):
 		self.filter_bank = []
 		for angle in angles:
 			self.filter_bank.append(GaborConv2d(angle))
+		self.filter_bank_coop = []
+		for angle in angles:
+			self.filter_bank_coop.append(CoopConv2d(angle))
+		# self.plot_filter_bank(self.filter_bank_coop)
+		# self.plot_filter_bank_2()
 
 		self.downscale = nn.AvgPool2d(2)
 
-	def plot_filter_bank(self,):
+	# def plot_filter_bank(self,):
 
-		for gabor_filter in self.filter_bank:
+	# 	for gabor_filter in self.filter_bank:
+	# 		gabor_filter.plot_filter()
+	# 	plt.show()
+
+	def plot_filter_bank(self, filter_bank):
+
+		for gabor_filter in filter_bank:
 			gabor_filter.plot_filter()
 		plt.show()
+
+	def plot_filter_bank_2(self):
+
+		for gabor_filter, filter_coop in zip(self.filter_bank, self.filter_bank_coop):
+			gabor_filter.plot_filter()
+			filter_coop.plot_filter()
+			plt.show()
+
+	def apply_filter_bank(self, ori_planes, filter_bank):
+		res = []
+		for _ori_plane, _filter in zip(ori_planes.transpose(0,1), filter_bank):
+			res.append(_filter(_ori_plane.unsqueeze(1)))
+		return F.relu(torch.cat(res, dim=1))
+
 
 	def forward(self, inputs):
 
@@ -227,42 +252,76 @@ class GaborNet2(Deeplabv3Plus1):
 		pred_down2 = self.downscale(pred)
 		pred_down4 = self.downscale(pred_down2)
 
+		plt.figure()
+		plt.imshow(pred.cpu().detach().numpy()[0].squeeze())
+
 		pred = pred - pred.view(bs, -1).mean(1).view(bs,1,1,1)
-		pred_down2 = pred_down2 - pred_down2.view(bs, -1).mean(1).view(bs,1,1,1)
-		pred_down4 = pred_down4 - pred_down4.view(bs, -1).mean(1).view(bs,1,1,1)
+		# pred_down2 = pred_down2 - pred_down2.view(bs, -1).mean(1).view(bs,1,1,1)
+		# pred_down4 = pred_down4 - pred_down4.view(bs, -1).mean(1).view(bs,1,1,1)
 
 		plt.figure()
 		plt.imshow(pred.cpu().detach().numpy()[0].squeeze())
-		plt.figure()
-		plt.imshow(pred_down2.cpu().detach().numpy()[0].squeeze())
-		plt.figure()
-		plt.imshow(pred_down4.cpu().detach().numpy()[0].squeeze())
+		# plt.figure()
+		# plt.imshow(pred_down2.cpu().detach().numpy()[0].squeeze())
+		# plt.figure()
+		# plt.imshow(pred_down4.cpu().detach().numpy()[0].squeeze())
 		plt.show()
 
 
 		res = []
 		for gabor_filter in self.filter_bank:
 			f_pred = gabor_filter(pred)
-			f_pred_down2 = F.interpolate(gabor_filter(pred_down2), size=input_shape, mode='bilinear', align_corners=False)
-			f_pred_down4 = F.interpolate(gabor_filter(pred_down4), size=input_shape, mode='bilinear', align_corners=False)
-			res.append(f_pred + f_pred_down2 + f_pred_down4)
+			# f_pred_down2 = F.interpolate(gabor_filter(pred_down2), size=input_shape, mode='bilinear', align_corners=False)
+			# f_pred_down4 = F.interpolate(gabor_filter(pred_down4), size=input_shape, mode='bilinear', align_corners=False)
+			# res.append(f_pred + f_pred_down2 + f_pred_down4)
+			res.append(f_pred)
 
 		res = F.relu(torch.cat(res, dim=1))
 		res = res / (res.sum(1).unsqueeze(1) + 1.0)
 
+
+
 		# for _res in res[0]:
 		# 	plt.figure()
-		# 	plt.imshow(_res.cpu().detach().numpy().squeeze())
+		# 	plt.imshow(_res.cpu().detach().numpy().squeeze(), vmax=1.0)
 		# 	plt.show()
 
-		res_coop = []
-		for gabor_filter, _res in zip(self.filter_bank, res):
-			res_coop.append(gabor_filter(_res.unsqueeze(1)))
+		# pdb.set_trace()
+
+		# res_coop = []
+		# for gabor_filter, _res in zip(self.filter_bank, res.transpose(0,1)):
+		# 	# plt.figure()
+		# 	# plt.imshow(_res[0].cpu().detach().numpy().squeeze())
+		# 	# gabor_filter.plot_filter()
+		# 	# plt.show()
+		# 	res_coop.append(gabor_filter(_res.unsqueeze(1)))
+
+		# res_coop = F.relu(torch.cat(res_coop, dim=1))
+		res_coop = self.apply_filter_bank(res, self.filter_bank)
 
 		for _res in res_coop[0]:
 			plt.figure()
 			plt.imshow(_res.cpu().detach().numpy().squeeze())
-			plt.show()
+		plt.show()
+
+		res_coop = self.apply_filter_bank(res_coop, self.filter_bank_coop)
+
+		for _res in res_coop[0]:
+			plt.figure()
+			plt.imshow(_res.cpu().detach().numpy().squeeze())
+		plt.show()
+
+		hist = res_coop.view(bs, self.num_angles, -1).sum(2)
+		hist /= (hist.sum(1).unsqueeze(1).repeat([1, self.num_angles]) + 1.0)
+
+		pdb.set_trace()
+
+		# for _res in res_coop[0]:
+		# 	plt.figure()
+		# 	plt.imshow(_res.cpu().detach().numpy().squeeze())
+		# plt.show()
+
+		# pdb.set_trace()
 
 		pred_coop = 2 * torch.sigmoid(sum(res_coop)) - 1.0
 		pdb.set_trace()
