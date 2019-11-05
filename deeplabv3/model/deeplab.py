@@ -202,24 +202,13 @@ class GaborNet2(Deeplabv3Plus1):
 	def __init__(self, n_classes, pretrained_model, predict, aux=False, angle_step=15.0, out_planes_skip=48):
 		super(GaborNet2, self).__init__(n_classes, pretrained_model, predict, out_planes_skip=out_planes_skip, aux=aux)
 		
-		angles = np.deg2rad(np.arange(0.0, 180.0, angle_step))
-		self.num_angles = len(angles)
+		angles1 = np.deg2rad(np.arange(-30.0, 30.0 + angle_step, angle_step))
+		angles2 = angles1 + np.pi/2
+		angles = np.array(angles1.tolist() + angles2.tolist())
+		self.num_angles = len(angles1)
 		self.filter_bank = []
 		for angle in angles:
 			self.filter_bank.append(GaborConv2d(angle))
-		self.filter_bank_coop = []
-		for angle in angles:
-			self.filter_bank_coop.append(CoopConv2d(angle))
-		# self.plot_filter_bank(self.filter_bank_coop)
-		# self.plot_filter_bank_2()
-
-		self.downscale = nn.AvgPool2d(2)
-
-	# def plot_filter_bank(self,):
-
-	# 	for gabor_filter in self.filter_bank:
-	# 		gabor_filter.plot_filter()
-	# 	plt.show()
 
 	def plot_filter_bank(self, filter_bank):
 
@@ -227,106 +216,43 @@ class GaborNet2(Deeplabv3Plus1):
 			gabor_filter.plot_filter()
 		plt.show()
 
-	def plot_filter_bank_2(self):
-
-		for gabor_filter, filter_coop in zip(self.filter_bank, self.filter_bank_coop):
-			gabor_filter.plot_filter()
-			filter_coop.plot_filter()
-			plt.show()
-
-	def apply_filter_bank(self, ori_planes, filter_bank):
-		res = []
-		for _ori_plane, _filter in zip(ori_planes.transpose(0,1), filter_bank):
-			res.append(_filter(_ori_plane.unsqueeze(1)))
-		return F.relu(torch.cat(res, dim=1))
-
 
 	def forward(self, inputs):
 
 		results = super(GaborNet2, self).forward(inputs)
 		pred = results["out"]["out"].transpose(0,1)[1].unsqueeze(1)
-
 		bs = pred.shape[0]
-		input_shape = pred.shape[-2:]
-
-		pred_down2 = self.downscale(pred)
-		pred_down4 = self.downscale(pred_down2)
-
-		plt.figure()
-		plt.imshow(pred.cpu().detach().numpy()[0].squeeze())
-
+		prob = torch.sigmoid(pred)
 		pred = pred - pred.view(bs, -1).mean(1).view(bs,1,1,1)
-		# pred_down2 = pred_down2 - pred_down2.view(bs, -1).mean(1).view(bs,1,1,1)
-		# pred_down4 = pred_down4 - pred_down4.view(bs, -1).mean(1).view(bs,1,1,1)
 
+		# plt.figure()
+		# plt.imshow(torch.sigmoid(pred).cpu().detach().numpy()[0].squeeze(), vmax=1.0, vmin=0.0)
 		plt.figure()
-		plt.imshow(pred.cpu().detach().numpy()[0].squeeze())
-		# plt.figure()
-		# plt.imshow(pred_down2.cpu().detach().numpy()[0].squeeze())
-		# plt.figure()
-		# plt.imshow(pred_down4.cpu().detach().numpy()[0].squeeze())
+		plt.imshow(prob.cpu().detach().numpy()[0].squeeze(), vmax=1.0, vmin=0.0)
 		plt.show()
-
 
 		res = []
 		for gabor_filter in self.filter_bank:
-			f_pred = gabor_filter(pred)
-			# f_pred_down2 = F.interpolate(gabor_filter(pred_down2), size=input_shape, mode='bilinear', align_corners=False)
-			# f_pred_down4 = F.interpolate(gabor_filter(pred_down4), size=input_shape, mode='bilinear', align_corners=False)
-			# res.append(f_pred + f_pred_down2 + f_pred_down4)
-			res.append(f_pred)
+			res.append(gabor_filter(pred))
 
 		res = F.relu(torch.cat(res, dim=1))
 		res = res / (res.sum(1).unsqueeze(1) + 1.0)
 
-
+		res1 = res.transpose(0,1)[:self.num_angles].transpose(0,1)
+		res2 = res.transpose(0,1)[self.num_angles:].transpose(0,1)
+		res = (res1 + res2) * prob
 
 		# for _res in res[0]:
 		# 	plt.figure()
 		# 	plt.imshow(_res.cpu().detach().numpy().squeeze(), vmax=1.0)
-		# 	plt.show()
-
-		# pdb.set_trace()
-
-		# res_coop = []
-		# for gabor_filter, _res in zip(self.filter_bank, res.transpose(0,1)):
-		# 	# plt.figure()
-		# 	# plt.imshow(_res[0].cpu().detach().numpy().squeeze())
-		# 	# gabor_filter.plot_filter()
-		# 	# plt.show()
-		# 	res_coop.append(gabor_filter(_res.unsqueeze(1)))
-
-		# res_coop = F.relu(torch.cat(res_coop, dim=1))
-		res_coop = self.apply_filter_bank(res, self.filter_bank)
-
-		for _res in res_coop[0]:
-			plt.figure()
-			plt.imshow(_res.cpu().detach().numpy().squeeze())
-		plt.show()
-
-		res_coop = self.apply_filter_bank(res_coop, self.filter_bank_coop)
-
-		for _res in res_coop[0]:
-			plt.figure()
-			plt.imshow(_res.cpu().detach().numpy().squeeze())
-		plt.show()
-
-		hist = res_coop.view(bs, self.num_angles, -1).sum(2)
-		hist /= (hist.sum(1).unsqueeze(1).repeat([1, self.num_angles]) + 1.0)
-
-		pdb.set_trace()
-
-		# for _res in res_coop[0]:
-		# 	plt.figure()
-		# 	plt.imshow(_res.cpu().detach().numpy().squeeze())
 		# plt.show()
 
-		# pdb.set_trace()
 
-		pred_coop = 2 * torch.sigmoid(sum(res_coop)) - 1.0
+		hist = res.view(bs, self.num_angles, -1).sum(2)
+		hist /= (hist.sum(1).unsqueeze(1).repeat([1, self.num_angles]) + 1.0)
 		pdb.set_trace()
 
-		results["out"]["out_coop"] = pred_coop
+		results["out"]["out_coop"] = hist
 
 		return results
 
