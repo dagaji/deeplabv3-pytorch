@@ -8,25 +8,72 @@ import deeplabv3.vis as vis
 import math
 from scipy.spatial import distance
 
-# def points2line_eq(point1, point2):
+class LineSampler:
 
-# 	point1 = np.array(point1)
-# 	point2 = np.array(point2)
-# 	b, a = (point2 - point1).tolist()
-# 	c = a * point1[0] + b * point1[1]
-# 	return a, b, c
+	def __init__(self, angle_step=1.0, rho_step=10, npoints=50, plot=False):
 
-# def points2line_eq(point1, point2):
+		self.angle_step = angle_step
+		self.rho_step = rho_step
+		self.npoints = npoints
+		self.plot = plot
 
-# 	x1, y1 = point1
-# 	x2, y2 = point2
 
-# 	angle = np.arctan(float(y2 - y1)/float(x2 - x1))
+	def __call__(self, angle_range, sz):
 
-# 	a = np.cos(angle)
-# 	b = np.sin(angle)
-# 	c = -(a * x1 + b * y1)
-# 	return a, b, c
+		def norm_coords(coords):
+			coords[:, 0] = 2 * coords[:,0] / float(sz[1] - 1) - 1
+			coords[:, 1] = 2 * coords[:,1] / float(sz[0] - 1) - 1
+			return coords
+
+		def line_coords(intersect_points, orientation):
+
+			if self.plot:
+				fig, ax = plt.subplots(1)
+				ax.imshow(np.zeros(sz + (3,), dtype=np.uint8))
+				circle = plt.Circle(intersect_points[0], 5, color='b')
+				ax.add_patch(circle)
+				circle = plt.Circle(intersect_points[1], 5, color='b')
+				ax.add_patch(circle)
+
+			if self.plot:
+				fig, ax = plt.subplots(1)
+				ax.imshow(np.zeros(sz + (3,), dtype=np.uint8))
+
+			step_len = distance.euclidean(intersect_points[0], intersect_points[1]) / self.npoints
+			diff_vector = np.array(intersect_points[1]) - np.array(intersect_points[0])
+			unit_vector = diff_vector / np.sqrt((diff_vector ** 2).sum())
+			line_points = []
+			for i in np.arange(1, self.npoints):
+				line_point = np.array(intersect_points[0]) + i * step_len * unit_vector
+				line_points.append(line_point)
+				if self.plot:
+					circle = plt.Circle(tuple(line_point.tolist()), 2, color='b')
+					ax.add_patch(circle)
+
+			if self.plot:
+				plt.show()
+
+			return np.array(line_points).astype(np.float32)
+
+		max_distance = 2 * np.sqrt(sz[0] ** 2 + sz[1] ** 2)
+		rhos =  np.arange(-max_distance / 2.0, max_distance / 2.0 + self.rho_step, self.rho_step)
+		thetas = np.arange(angle_range[0], angle_range[1] + self.angle_step, self.angle_step)
+		thetas = np.deg2rad(thetas)
+
+		sampled_lines = []
+		lines_coeffs = []
+		for _theta in thetas.tolist():
+			for _rho in rhos.tolist():
+				line_coeffs = general_form(_rho, _theta)
+				intersect_points = find_intesect_borders(line_coeffs, sz)
+				if intersect_points is not None:
+					line_points = line_coords(intersect_points, _theta)
+					line_points = norm_coords(line_points)
+					sampled_lines.append(line_points)
+					lines_coeffs.append(normal_form(*line_coeffs))
+
+		return sampled_lines, lines_coeffs
+
 
 def points2line_eq(point1, point2):
 
@@ -40,6 +87,9 @@ def points2line_eq(point1, point2):
 	return tuple((np.array((a, b, c)) * scale_factor).tolist())
 
 def general_form(rho, theta):
+	if rho < 0.0:
+		theta += np.pi
+		rho *= -1.0
 	a = math.cos(theta)
 	b = math.sin(theta)
 	c = -rho
@@ -198,15 +248,15 @@ def create_grid(sz, lines, width=8):
 
 def compute_hist(hspace, angles, bin_length=10):
 
-    M, N = hspace.shape
-    hist = np.zeros(int(N/bin_length), dtype=float)
-    j = 0
-    bins_edges = []
-    for i in range(0, N, bin_length):
-        hist[j] = np.sum(hspace[:,i:i+bin_length])
-        bins_edges.append(angles[i])
-        j += 1
-    return hist, np.rad2deg(bins_edges)
+	M, N = hspace.shape
+	hist = np.zeros(int(N/bin_length), dtype=float)
+	j = 0
+	bins_edges = []
+	for i in range(0, N, bin_length):
+		hist[j] = np.sum(hspace[:,i:i+bin_length])
+		bins_edges.append(angles[i])
+		j += 1
+	return hist, np.rad2deg(bins_edges)
 
 
 def get_anchors(orientation, M, sz, is_vertical):

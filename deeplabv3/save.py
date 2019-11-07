@@ -55,6 +55,8 @@ class ResultsSaver:
 		# new_size = (int(w * 0.65), int(h * 0.65))
 		# img = cv2.resize(img, new_size)
 		vis_img = vis_seg(img, np.squeeze(pred), self.palette)
+		plt.imshow(vis_img)
+		plt.show()
 		# plt.figure()
 		# plt.imshow(vis_img[...,::-1])
 		# plt.show()

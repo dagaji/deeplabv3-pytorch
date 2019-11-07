@@ -107,15 +107,20 @@ class VideoDataset(data.Dataset):
 @register.attach('hist_dataset')
 class HistDataset(data.Dataset):
 
-    def __init__(self, root, id_list_path, angle_step, augmentations=[], min_angle=-45, max_angle=45):
+    def __init__(self, root, id_list_path, angle_step=15.0, min_angle=-30.0, max_angle=30.0, augmentations=[]):
         self.root = root
         self.id_list = np.loadtxt(id_list_path, dtype=str)
         self.mean = [0.485, 0.456, 0.406]
         self.var = [0.229, 0.224, 0.225]
         self.augmentations = Compose(augmentations)
-        self.rot_angles = np.arange(min_angle, max_angle, angle_step)
+        self.rot_angles = np.arange(min_angle, max_angle + angle_step, angle_step)
         self.min_angle = min_angle
         self.max_angle = max_angle
+        self.line_sampler = lines.LineSampler()
+        self.setup()
+
+    def setup(self,):
+        self.id_list = [img_id for img_id in self.id_list.tolist() if "APR" in img_id]
 
 
     def _load_data(self, idx):
@@ -134,6 +139,21 @@ class HistDataset(data.Dataset):
 
         return image_id, img, label, label_test
 
+    def get_line_gt(self, true_lines, proposed_lines):
+
+        true_lines = np.array(true_lines, dtype=np.float32)
+        proposed_lines = np.array(proposed_lines, dtype=np.float32)
+
+        n_lines = proposed_lines.shape[0]
+        lines_gt = np.zeros(n_lines, dtype=np.float32)
+        for idx in np.arange(n_lines):
+            distance = np.abs(proposed_lines[idx,:] - true_lines)
+            close_lines = np.logical_and(distance[:,0] < 5, distance[:,1] < np.deg2rad(1))
+            if np.any(close_lines):
+                lines_gt[idx] = 1.0
+
+        return lines_gt
+
 
     def __getitem__(self, index):
 
@@ -150,36 +170,54 @@ class HistDataset(data.Dataset):
 
         seg_label = label.astype(np.int64)
         hist_mask = np.logical_or(label == 0, label == 1).astype(np.float32)
-        hist_mask2 = np.ones(hist_mask.shape, dtype=np.float32)
-        angle_gt = np.zeros(len(self.rot_angles), dtype=np.float32)
+        line_points = np.zeros((200, 200, 2), dtype=np.float32)
 
         label_test = (label_test == 1)
         if np.any(label_test):
 
-            angle_range_v = (self.min_angle, self.max_angle)
-            angle_range_h = (self.min_angle + 90, self.max_angle + 90)
-
-            _, angles_v, dists_v = lines.search_lines(label_test, angle_range_v, npoints=1000, min_distance=100, min_angle=300, threshold=None)
-            lines_v = lines.get_lines(dists_v, angles_v)
-            dir1_mask  = lines.create_grid(seg_label.shape, lines_v).astype(np.float32)
-
-            _, angles_h, dists_h = lines.search_lines(label_test, angle_range_h, npoints=1000, min_distance=100, min_angle=300, threshold=None)
-            lines_h = lines.get_lines(dists_h, angles_h)
-            dir2_mask  = lines.create_grid(seg_label.shape, lines_h).astype(np.float32)
-
-            joint_mask  = (dir1_mask * dir2_mask * hist_mask).astype(np.uint8)
-            joint_mask = cv2.dilate(joint_mask, np.ones((7,7), dtype=np.uint8), iterations=5)
-            hist_mask2[joint_mask > 0] = 0.5
-
-            # plt.imshow(hist_mask2)
-            # plt.show()
-
+            _, angles_v, dists_v = lines.search_lines(label_test, (self.min_angle, self.max_angle), npoints=1000, min_distance=100, min_angle=300, threshold=None)
+            true_lines_v = lines.get_lines(dists_v, angles_v)
+            _, angles_h, dists_h = lines.search_lines(label_test, (self.min_angle + 90, self.max_angle + 90), npoints=1000, min_distance=100, min_angle=300, threshold=None)
+            true_lines_h = lines.get_lines(dists_h, angles_h)
+            
             angle_dist = np.abs(self.rot_angles - np.rad2deg(angles_v).mean())
             angle_indices = np.argsort(angle_dist)[:2]
-            angle_gt[angle_indices.tolist()] = 1.0
+            angle_range_v = self.rot_angles[angle_indices.tolist()]
+            angle_range_v.sort()
+            angle_range_h = angle_range_v + 90.0
 
+            sampled_points_v, proposed_lines_v = self.line_sampler(angle_range_v, label_test.shape)
+            sampled_points_h, proposed_lines_h = self.line_sampler(angle_range_h, label_test.shape)
 
-        return dict(image_id=image_id, image=image, seg_label=seg_label, angle_gt=angle_gt, hist_mask=hist_mask, hist_mask2=hist_mask2)
+            lines_gt_v = self.get_line_gt(true_lines_v, proposed_lines_v)
+            lines_gt_h = self.get_line_gt(true_lines_h, proposed_lines_h)
+
+            lines_gt = np.append(lines_gt_v, lines_gt_h)
+            proposed_lines = np.array(proposed_lines_v + proposed_lines_h, dtype=np.float32)
+            sampled_points = np.stack(sampled_points_v + sampled_points_h)
+
+            positive_indices = np.where(lines_gt.astype(bool))[0]
+            false_indices = np.where(~lines_gt.astype(bool))[0]
+            np.random.shuffle(false_indices)
+            false_indices = false_indices[:len(positive_indices)]
+            indices = positive_indices.tolist() + false_indices.tolist()
+
+            sampled_points = sampled_points[indices]
+            proposed_lines = proposed_lines[indices]
+            lines_gt = lines_gt[indices]
+
+            # aux_mask1 = lines.create_grid(label_test.shape, proposed_lines.tolist())
+            # aux_mask2 = lines.create_grid(label_test.shape, true_lines_v + true_lines_h)
+            # plt.figure()
+            # plt.imshow(aux_mask1)
+            # plt.figure()
+            # plt.imshow(aux_mask2)
+            # plt.show()
+            # pdb.set_trace()
+
+            # line_points += self.line_sampler(angle_range_h, label_test.shape)
+
+        return dict(image_id=image_id, image=image, seg_label=seg_label, hist_mask=hist_mask, line_points=sampled_points, line_coeffs=proposed_lines, lines_gt=lines_gt)
 
     def __len__(self):
         return len(self.id_list)

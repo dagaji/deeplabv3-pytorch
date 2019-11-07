@@ -9,16 +9,13 @@ models_map = {'deeplabv3' : Deeplabv3,
 			  'mosaic': MosaicNet,
 			  'hist': GaborNet,
 			  'hist2': GaborNet2,
+			  'lines': Deeplabv3PlusLines,
 			  }
-
-# predict_map = {'argmax': argmax_predict,
-# 			   'line_dect': line_detection,
-# 			   'line_dect_multi': line_detection_multi,
-# 			   }
 
 predict_map = {'argmax': argmax_predict,
 			   'line_dect': line_detection,
 			   'line_dect_multi': MultiFrameMerge(nframes=9),
+			   'draw_lines': draw_lines
 			   }
 
 output_stride_params = { 16: dict(replace_stride_with_dilation=[False, False, True], rates=[6, 12, 18]),
@@ -26,6 +23,12 @@ output_stride_params = { 16: dict(replace_stride_with_dilation=[False, False, Tr
 						 4 : dict(replace_stride_with_dilation=[True, True, True],   rates=[24, 48, 72]),
 						 32: dict(replace_stride_with_dilation=[False, False, False], rates=[3, 6, 9])
 						}
+
+# def get_model(n_classes, cfg):
+# 	return_layers = dict(layer4='out', layer1='skip1', layer3='aux')
+# 	kw_backbone_args = dict(output_stride_params[cfg['stride']])
+# 	kw_backbone_args.update(return_layers=return_layers)
+# 	return models_map[cfg['name']](n_classes, cfg, kw_backbone_args)
 
 def get_model(n_classes, cfg, aux=False):
 

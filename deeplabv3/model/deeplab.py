@@ -150,15 +150,59 @@ class Deeplabv3Plus1(_Deeplabv3Plus):
 			result["out"] = OrderedDict()
 			result["out"]["out"] = x
 			if self.aux_clf is not None:
-				pdb.set_trace()
 				x = features["aux"]
 				x = self.aux_clf(x)
 				x = F.interpolate(x, size=input_shape, mode='bilinear', align_corners=False)
 				result["aux"] = x
 			return result
 		else:
-			return self.predict(x)
+			return self.predict(x, inputs)
 
+class Deeplabv3PlusLines(_Deeplabv3Plus):
+	def __init__(self, n_classes, pretrained_model, predict, aux=False, out_planes_skip=48):
+		super(Deeplabv3PlusLines, self).__init__(n_classes, 
+											pretrained_model, 
+											DeepLabDecoder1(256, out_planes=out_planes_skip), 
+											predict,
+											aux=aux)
+
+		self.lines_clf = nn.Linear(256, 1, bias=False)
+		self.lines_clf.weight = None
+		
+	def load_state_dict(self, state_dict, strict=True):
+		super(Deeplabv3PlusLines, self).load_state_dict(state_dict, strict)
+		if self.lines_clf.weight is None:
+			w0, w1 = self.classifier.weight.data[:2]
+			init_weight = (w1-w0).squeeze().unsqueeze(0)
+			self.lines_clf.weight = nn.Parameter(init_weight)
+
+	def get_device(self,):
+		return self.classifier.weight.device
+
+	def forward(self, inputs):
+
+		x = inputs['image'].to(self.get_device())
+		input_shape = x.shape[-2:]
+		features = self.backbone(x)
+		x = features["out"]
+		x_low = features["skip1"]
+		x = self.aspp(x)
+		x = self.decoder(x, x_low)
+		x_features = F.interpolate(x, size=input_shape, mode='bilinear', align_corners=False)
+		x_seg = self.classifier(x_features)
+
+		grid = inputs['line_points'].to(self.get_device())
+		sampled_lines = F.grid_sample(x_features, grid)
+		line_features = sampled_lines.transpose(1,2).mean(3)
+		line_probs = torch.sigmoid(self.lines_clf(line_features)).squeeze()
+
+		if self.training:
+			result = OrderedDict()
+			result["out"] = OrderedDict()
+			result["out"]["out"] = line_probs
+		else:
+			return self.predict(line_probs, inputs)
+			
 
 class GaborNet(Deeplabv3Plus1):
 	def __init__(self, n_classes, pretrained_model, predict, aux=False, angle_step=15.0, max_angle=45, min_angle=-45, out_planes_skip=48):

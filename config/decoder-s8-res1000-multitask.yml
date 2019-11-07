@@ -3,30 +3,18 @@ num_classes: 4
 # Training Configuration
 training:
 
-    batch_size: 2
+    batch_size: 1
     display_iters: 2
     iter_size: 5
 
     # Dataset Configuration
-    # dataset:
-    #     name: 'hist_dataset'
-    #     params:
-    #         root: '/home/davidgj/projects/APR_TAX_RWY'
-    #         angle_step: 5.0
-    #         min_angle: -25.0
-    #         max_angle: 25.0
-    #         augmentations:
-    #             - pca:
-    #                 sigma_pca: 0.05   
-    #             - random_flip:
-    #             - rotate:
-    #                 sigma_angle: 17.0
-    #                 w: 833
-    #                 h: 417
     dataset:
-        name: 'base_dataset'
+        name: 'hist_dataset'
         params:
             root: '/home/davidgj/projects/APR_TAX_RWY'
+            angle_step: 15.0
+            min_angle: -30.0
+            max_angle: 30.0
             augmentations:
                 - pca:
                     sigma_pca: 0.05   
@@ -35,6 +23,18 @@ training:
                     sigma_angle: 17.0
                     w: 833
                     h: 417
+    # dataset:
+    #     name: 'base_dataset'
+    #     params:
+    #         root: '/home/davidgj/projects/APR_TAX_RWY'
+    #         augmentations:
+    #             - pca:
+    #                 sigma_pca: 0.05   
+    #             - random_flip:
+    #             - rotate:
+    #                 sigma_angle: 17.0
+    #                 w: 833
+    #                 h: 417
 
     # LR Schedule Configuration
     scheduler:
@@ -45,12 +45,13 @@ training:
             gamma: 0.9
 
     loss: 
-        name: 'dice_loss'
+        name: 'hist_loss'
 
     # Model Configuration
     model:
-        name: 'hist2'
+        name: 'lines'
         stride: 8
+        predict: 'draw_lines'
 
             
 
@@ -64,10 +65,13 @@ validation:
 
         - name: 'res1000_s8'
           dataset:
-            name: 'slim_dataset'
+            name: 'hist_dataset'
             params:
                 root: '/home/davidgj/projects/APR_TAX_RWY'
-                train: False
+                angle_step: 15.0
+                min_angle: -30.0
+                max_angle: 30.0
           model:
-            name: 'deeplabv3+1'
+            name: 'lines'
             stride: 8
+            predict: 'draw_lines'

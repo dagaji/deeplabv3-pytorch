@@ -100,7 +100,7 @@ def validate(val_model, val_loader, num_classes, device, saver=None):
 
 			# running_score.update(labels, preds)
 			if saver is not None:
-				saver.save_vis(data['frame_id'], preds.cpu().numpy())
+				saver.save_vis(data['image_id'], preds)
 
 	# per_class_iu = running_score.get_pre_class_iu()
 	# print('Per_class IoU: {}'.format(per_class_iu))
@@ -130,7 +130,7 @@ if __name__ == "__main__":
 		partition = os.path.join(dataset_dir, 'partition_{}').format(partition_number)
 		_id_list_path = os.path.join(partition, '{}.txt')
 
-		model_train = get_model(num_classes, training_cfg["model"], training_cfg['aux_loss']).to(device)
+		model_train = get_model(num_classes, training_cfg["model"], False).to(device)
 
 		val_expers = {}
 		for _val_exper in val_cfg['val_expers']:
@@ -142,7 +142,7 @@ if __name__ == "__main__":
 		last_checkpoint_path = get_last_checkpoint(checkpoint_dir)
 		if last_checkpoint_path is not None:
 			last_checkpoint = torch.load(last_checkpoint_path)
-			model_train.load_state_dict(last_checkpoint["model_state_dict"])
+			model_train.load_state_dict(last_checkpoint["model_state_dict"], strict=False)
 			current_epoch = last_checkpoint["epoch"]
 			print("CHECKPOINT")
 		else:
