@@ -15,6 +15,7 @@ from torch.nn import functional as F
 from collections import OrderedDict
 from deeplabv3.model.gabor import GaborConv2d, CoopConv2d
 import matplotlib.pyplot as plt
+import deeplabv3.lines as lines
 
 class Deeplabv3(nn.Module):
 	pass
@@ -168,6 +169,18 @@ class Deeplabv3PlusLines(_Deeplabv3Plus):
 
 		self.lines_clf = nn.Linear(256, 1, bias=False)
 		self.lines_clf.weight = None
+
+		angle_step = 15.0
+		angles1 = np.deg2rad(np.arange(-30.0, 30.0 + angle_step, angle_step))
+		self.angles_v = np.rad2deg(angles1)
+		angles2 = angles1 + np.pi/2
+		angles = np.array(angles1.tolist() + angles2.tolist())
+		self.num_angles = len(angles1)
+		self.filter_bank = []
+		for angle in angles:
+			self.filter_bank.append(GaborConv2d(angle))
+
+		self.line_sampler = lines.LineSampler()
 		
 	def load_state_dict(self, state_dict, strict=True):
 		super(Deeplabv3PlusLines, self).load_state_dict(state_dict, strict)
@@ -178,6 +191,42 @@ class Deeplabv3PlusLines(_Deeplabv3Plus):
 
 	def get_device(self,):
 		return self.classifier.weight.device
+
+	def compute_angle_range(self, x_seg):
+
+		prob = torch.softmax(x_seg.transpose(0,1)[:2].transpose(0,1), dim=1)
+		prob = prob.transpose(0,1)[1].unsqueeze(1)
+		pred = x_seg.transpose(0,1)[1].unsqueeze(1)
+		bs = pred.shape[0]
+		pred = pred - pred.view(bs, -1).mean(1).view(bs,1,1,1)
+
+		res = []
+		for gabor_filter in self.filter_bank:
+			res.append(gabor_filter(pred))
+
+		res = F.relu(torch.cat(res, dim=1))
+		res = res / (res.sum(1).unsqueeze(1) + 1.0)
+
+		res1 = res.transpose(0,1)[:self.num_angles].transpose(0,1)
+		res2 = res.transpose(0,1)[self.num_angles:].transpose(0,1)
+		res = (res1 + res2) * prob
+
+		# for _res in res[0]:
+		# 	plt.figure()
+		# 	plt.imshow(_res.cpu().detach().numpy().squeeze(), vmax=1.0)
+		# plt.show()
+
+		hist = res.view(bs, self.num_angles, -1).sum(2)
+		hist /= (hist.sum(1).unsqueeze(1).repeat([1, self.num_angles]) + 1.0)
+		print(hist)
+		hist = hist.cpu().numpy().squeeze()
+		angle_indices = np.argsort(hist)[-2:]
+		angle_range_v = self.angles_v[angle_indices]
+		angle_range_v.sort()
+		angle_range_h = angle_range_v + 90
+
+		return angle_range_v, angle_range_h
+
 
 	def forward(self, inputs):
 
@@ -191,7 +240,19 @@ class Deeplabv3PlusLines(_Deeplabv3Plus):
 		x_features = F.interpolate(x, size=input_shape, mode='bilinear', align_corners=False)
 		x_seg = self.classifier(x_features)
 
-		grid = inputs['line_points'].to(self.get_device())
+		angle_range_v, angle_range_h = self.compute_angle_range(x_seg)
+		print(">> {}".format(angle_range_v))
+		sampled_points_v, proposed_lines_v = self.line_sampler(angle_range_v, tuple(input_shape))
+		sampled_points_h, proposed_lines_h = self.line_sampler(angle_range_h, tuple(input_shape))
+
+		# pdb.set_trace()
+
+		proposed_lines = np.array(proposed_lines_v + proposed_lines_h, dtype=np.float32)
+		sampled_points = np.stack(sampled_points_v + sampled_points_h)[np.newaxis,...]
+		grid = torch.Tensor(sampled_points).to(self.get_device())
+
+		# grid = inputs['line_points'].to(self.get_device())
+		# proposed_lines = inputs['line_coeffs'].cpu().numpy().squeeze()
 		sampled_lines = F.grid_sample(x_features, grid)
 		line_features = sampled_lines.transpose(1,2).mean(3)
 		line_probs = torch.sigmoid(self.lines_clf(line_features)).squeeze()
@@ -201,7 +262,8 @@ class Deeplabv3PlusLines(_Deeplabv3Plus):
 			result["out"] = OrderedDict()
 			result["out"]["out"] = line_probs
 		else:
-			return self.predict(line_probs, inputs)
+			#return self.predict(line_probs, inputs)
+			return self.predict(line_probs, inputs, proposed_lines)
 			
 
 class GaborNet(Deeplabv3Plus1):

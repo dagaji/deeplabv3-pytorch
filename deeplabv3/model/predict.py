@@ -85,8 +85,8 @@ def argmax_predict(x):
 # 					sampled_features = sampled_features * sampled_prob / sampled_prob.sum()
 					
 
-def draw_lines(line_probs, data):
-	line_coeffs = data['line_coeffs'].cpu().numpy().squeeze()
+def draw_lines(line_probs, data, line_coeffs):
+	# line_coeffs = data['line_coeffs'].cpu().numpy().squeeze()
 	sz = data['image'].shape[-2:]
 	line_probs = line_probs.cpu().detach().numpy()
 	selected_lines = line_coeffs[line_probs > 0.5]

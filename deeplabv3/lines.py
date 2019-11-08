@@ -10,7 +10,7 @@ from scipy.spatial import distance
 
 class LineSampler:
 
-	def __init__(self, angle_step=1.0, rho_step=10, npoints=50, plot=False):
+	def __init__(self, angle_step=2.5, rho_step=10, npoints=50, plot=False):
 
 		self.angle_step = angle_step
 		self.rho_step = rho_step
@@ -19,6 +19,7 @@ class LineSampler:
 
 
 	def __call__(self, angle_range, sz):
+
 
 		def norm_coords(coords):
 			coords[:, 0] = 2 * coords[:,0] / float(sz[1] - 1) - 1
