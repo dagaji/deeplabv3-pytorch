@@ -264,51 +264,33 @@ class Deeplabv3PlusLines(_Deeplabv3Plus):
 		else:
 			#return self.predict(line_probs, inputs)
 			return self.predict(line_probs, inputs, proposed_lines)
-			
-
-class GaborNet(Deeplabv3Plus1):
-	def __init__(self, n_classes, pretrained_model, predict, aux=False, angle_step=15.0, max_angle=45, min_angle=-45, out_planes_skip=48):
-		super(GaborNet, self).__init__(n_classes, pretrained_model, predict, out_planes_skip=out_planes_skip, aux=aux)
-		
-		plot_filters = False
-		angles = np.deg2rad(np.arange(min_angle, max_angle, angle_step))
-		self.num_angles = len(angles)
-		self.filter_bank = []
-		for angle in angles:
-			self.filter_bank.append(GaborConv2d(angle))
-			if plot_filters:
-				self.filter_bank[-1].plot_filter()
-		if plot_filters:
-			plt.show()
-
-		self.bias = nn.Parameter(torch.ones(1, requires_grad=True))
-
-	def forward(self, inputs):
-
-		results = super(GaborNet, self).forward(inputs)
-		pred = results["out"]["out"].transpose(0,1)[1].unsqueeze(1)
-		bs = pred.shape[0]
-
-		pred_2 = F.interpolate(pred, size=input_shape, mode='bilinear', align_corners=False)
-		pred_4 = x = F.interpolate(pred, size=input_shape, mode='bilinear', align_corners=False)
-
-		res = []
-		for gabor_filter in self.filter_bank:
-			res.append(gabor_filter(pred_1) - 700 * self.bias)
-
-		res = F.relu(torch.cat(res, dim=1))
-		hist = res.view(bs, self.num_angles, -1).sum(2)
-		hist /= (hist.sum(1).unsqueeze(1).repeat([1, self.num_angles]) + 1.0)
-		results["out"]["hist"] = hist
-
-		return results
 
 
-class GaborNet2(Deeplabv3Plus1):
-	def __init__(self, n_classes, pretrained_model, predict, aux=False, angle_step=15.0, out_planes_skip=48):
-		super(GaborNet2, self).__init__(n_classes, pretrained_model, predict, out_planes_skip=out_planes_skip, aux=aux)
-		
+class Deeplabv3PlusLines2(_Deeplabv3Plus):
+	def __init__(self, n_classes, pretrained_model, predict, aux=False, out_planes_skip=48):
+		super(Deeplabv3PlusLines2, self).__init__(n_classes, 
+											pretrained_model, 
+											DeepLabDecoder1(256, out_planes=out_planes_skip), 
+											predict,
+											aux=True)
+
+		self.aux_net = None
+
+		self.fc_net = nn.Sequential(nn.Linear(2 * 256, 1024, bias=False),
+									nn.ReLU(),
+									nn.Linear(1024, 256, bias=False),
+									nn.ReLU())
+		self.fc_net.apply(init_conv)
+
+		self.offset_reg = nn.Linear(256, 4, bias=False)
+		init_conv(self.offset_reg)
+
+		self.line_clf = nn.Linear(256, 1, bias=False)
+		init_conv(self.line_clf)
+
+		angle_step = 15.0
 		angles1 = np.deg2rad(np.arange(-30.0, 30.0 + angle_step, angle_step))
+		self.angles_v = np.rad2deg(angles1)
 		angles2 = angles1 + np.pi/2
 		angles = np.array(angles1.tolist() + angles2.tolist())
 		self.num_angles = len(angles1)
@@ -316,26 +298,24 @@ class GaborNet2(Deeplabv3Plus1):
 		for angle in angles:
 			self.filter_bank.append(GaborConv2d(angle))
 
-	def plot_filter_bank(self, filter_bank):
+		self.line_sampler = lines.LineSampler()
+		
+	def load_state_dict(self, state_dict, strict=True):
+		super(Deeplabv3PlusLines2, self).load_state_dict(state_dict, strict)
+		if self.aux_net is None:
+			aux_net = list(self.aux_clf.children())[:-2]
+			self.aux_net = nn.Sequential(*aux_net)
 
-		for gabor_filter in filter_bank:
-			gabor_filter.plot_filter()
-		plt.show()
+	def get_device(self,):
+		return self.classifier.weight.device
 
+	def compute_angle_range(self, x_seg):
 
-	def forward(self, inputs):
-
-		results = super(GaborNet2, self).forward(inputs)
-		pred = results["out"]["out"].transpose(0,1)[1].unsqueeze(1)
+		prob = torch.softmax(x_seg.transpose(0,1)[:2].transpose(0,1), dim=1)
+		prob = prob.transpose(0,1)[1].unsqueeze(1)
+		pred = x_seg.transpose(0,1)[1].unsqueeze(1)
 		bs = pred.shape[0]
-		prob = torch.sigmoid(pred)
 		pred = pred - pred.view(bs, -1).mean(1).view(bs,1,1,1)
-
-		# plt.figure()
-		# plt.imshow(torch.sigmoid(pred).cpu().detach().numpy()[0].squeeze(), vmax=1.0, vmin=0.0)
-		plt.figure()
-		plt.imshow(prob.cpu().detach().numpy()[0].squeeze(), vmax=1.0, vmin=0.0)
-		plt.show()
 
 		res = []
 		for gabor_filter in self.filter_bank:
@@ -353,41 +333,113 @@ class GaborNet2(Deeplabv3Plus1):
 		# 	plt.imshow(_res.cpu().detach().numpy().squeeze(), vmax=1.0)
 		# plt.show()
 
-
 		hist = res.view(bs, self.num_angles, -1).sum(2)
 		hist /= (hist.sum(1).unsqueeze(1).repeat([1, self.num_angles]) + 1.0)
-		pdb.set_trace()
+		print(hist)
+		hist = hist.cpu().numpy().squeeze()
+		angle_indices = np.argsort(hist)[-2:]
+		angle_range_v = self.angles_v[angle_indices]
+		angle_range_v.sort()
+		angle_range_h = angle_range_v + 90
 
-		results["out"]["out_coop"] = hist
+		return angle_range_v, angle_range_h
 
-		return results
+	def normalize_sampled_features(self, x_sampled_features):
+		x_mean = x_sampled_features.mean(2).unsqueeze(2)
+		x_std = x_sampled_features.std(2).unsqueeze(2)
+		return (x_sampled_features - x_mean) / x_std
+
+	def sample_features(self, x_features, x_features_aux, grid):
+
+		sampled_lines = F.grid_sample(x_features, grid).transpose(1,2).mean(3)
+		sampled_lines = self.normalize_sampled_features(sampled_lines)
+
+		sampled_lines_aux = F.grid_sample(x_features_aux, grid).transpose(1,2).mean(3)
+		sampled_lines_aux = self.normalize_sampled_features(sampled_lines_aux)
+
+		return torch.cat([sampled_lines, sampled_lines_aux], dim=2)
 
 
-class Deeplabv3Plus2(_Deeplabv3Plus):
-	def __init__(self, n_classes, pretrained_model, predict):
-		super(Deeplabv3Plus2, self).__init__(n_classes, 
-											pretrained_model, 
-											DeepLabDecoder2(256, 512), 
-											predict)
-
-	def forward(self, x):
+	def extract_features(self, x):
 
 		input_shape = x.shape[-2:]
 		features = self.backbone(x)
 		x = features["out"]
-		x_low1 = features["skip1"]
-		x_low2 = features["skip2"]
+		x_low = features["skip1"]
 		x = self.aspp(x)
-		x = self.decoder(x, x_low1, x_low2)
-		x = F.interpolate(x, size=input_shape, mode='bilinear', align_corners=False)
-		x = self.classifier(x)
-		
+		x = self.decoder(x, x_low)
+		x_features = F.interpolate(x, size=input_shape, mode='bilinear', align_corners=False)
+		x_seg = self.classifier(x_features)
+
+		x_features_aux = self.aux_net(features["aux"])
+		x_features_aux = F.interpolate(x_features_aux, size=input_shape, mode='bilinear', align_corners=False)
+
+		return x_seg, x_features, x_features_aux
+
+
+	def forward(self, inputs):
+
+		x = inputs['image'].to(self.get_device())
+		x_seg, x_features, x_features_aux = self.extract_features(x)
+
+		if self.training:
+			grid = inputs['line_points'].to(self.get_device())
+		else:
+			angle_range_v, angle_range_h = self.compute_angle_range(x_seg)
+			sampled_points_v, proposed_lines_v = self.line_sampler(angle_range_v, tuple(input_shape))
+			sampled_points_h, proposed_lines_h = self.line_sampler(angle_range_h, tuple(input_shape))
+			sampled_points = np.stack(sampled_points_v + sampled_points_h)[np.newaxis,...]
+			grid = torch.Tensor(sampled_points).to(self.get_device())
+
+		line_features = self.extract_features(x_features, x_features_aux, grid)
+		line_features = self.fc_net(line_features)
+		offset = self.offset_reg(line_features)
+		score = self.line_clf(line_features)
+
 		if self.training:
 			result = OrderedDict()
-			result["out"] = x
+			result["out"] = OrderedDict()
+			result["out"]["score"] = score
+			result["out"]["offset"] = offset
+			result["out"]["seg"] = x_seg
 			return result
 		else:
-			return self.predict(x)
+			proposed_lines = np.array(proposed_lines_v + proposed_lines_h, dtype=np.float32)
+			return self.predict(proposed_lines, score.cpu().numpy(), offset.cpu().numpy())
+			
+		# input_shape = x.shape[-2:]
+		# features = self.backbone(x)
+		# x = features["out"]
+		# x_low = features["skip1"]
+		# x = self.aspp(x)
+		# x = self.decoder(x, x_low)
+		# x_features = F.interpolate(x, size=input_shape, mode='bilinear', align_corners=False)
+		# x_seg = self.classifier(x_features)
+
+		# x_features_aux = self.aux_net(features["aux"])
+		# x_features_aux = F.interpolate(x_features_aux, size=input_shape, mode='bilinear', align_corners=False)
+
+		# angle_range_v, angle_range_h = self.compute_angle_range(x_seg)
+		# sampled_points_v, proposed_lines_v = self.line_sampler(angle_range_v, tuple(input_shape))
+		# sampled_points_h, proposed_lines_h = self.line_sampler(angle_range_h, tuple(input_shape))
+
+		# proposed_lines = np.array(proposed_lines_v + proposed_lines_h, dtype=np.float32)
+		# sampled_points = np.stack(sampled_points_v + sampled_points_h)[np.newaxis,...]
+		# grid = torch.Tensor(sampled_points).to(self.get_device())
+
+		# sampled_lines = F.grid_sample(x_features, grid).transpose(1,2).mean(3)
+		# sampled_lines = self.normalize_sampled_features(sampled_lines)
+
+		# sampled_lines_aux = F.grid_sample(x_features_aux, grid).transpose(1,2).mean(3)
+		# sampled_lines_aux = self.normalize_sampled_features(sampled_lines_aux)
+
+		# line_features = torch.cat([sampled_lines, sampled_lines_aux], dim=2)
+		# line_features = self.fc_net(line_features)
+		# offset = self.offset_reg(line_features)
+		# score = self.line_clf(line_features)
+
+		# return self.predict(proposed_lines, score, offset)
+			
 
 
 class DeepLabHead(nn.Sequential):

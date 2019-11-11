@@ -72,6 +72,6 @@ validation:
                 min_angle: -30.0
                 max_angle: 30.0
           model:
-            name: 'lines'
+            name: 'lines2'
             stride: 8
             predict: 'draw_lines'

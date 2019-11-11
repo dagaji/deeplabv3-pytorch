@@ -154,6 +154,7 @@ class HistDataset(data.Dataset):
 
         return lines_gt
 
+
     def remove_negatives(self, positive_lines, negative_lines, negative_indices):
 
         new_negative_indices = []
@@ -199,14 +200,15 @@ class HistDataset(data.Dataset):
             print(angle_range_v)
             angle_range_h = angle_range_v + 90.0
 
-            sampled_points_v, proposed_lines_v = self.line_sampler(angle_range_v, label_test.shape)
-            sampled_points_h, proposed_lines_h = self.line_sampler(angle_range_h, label_test.shape)
+            sampled_points_v, proposed_lines_v, lines_intersect_v = self.line_sampler(angle_range_v, label_test.shape)
+            sampled_points_h, proposed_lines_h, lines_intersect_h = self.line_sampler(angle_range_h, label_test.shape)
 
             lines_gt_v = self.get_line_gt(true_lines_v, proposed_lines_v)
             lines_gt_h = self.get_line_gt(true_lines_h, proposed_lines_h)
 
             lines_gt = np.append(lines_gt_v, lines_gt_h)
             proposed_lines = np.array(proposed_lines_v + proposed_lines_h, dtype=np.float32)
+            lines_intersect = np.array(lines_intersect_v + lines_intersect_h, dtype=np.float32)
             sampled_points = np.stack(sampled_points_v + sampled_points_h)
 
             positive_indices = np.where(lines_gt.astype(bool))[0].tolist()
@@ -221,16 +223,16 @@ class HistDataset(data.Dataset):
             proposed_lines = proposed_lines[indices]
             lines_gt = lines_gt[indices]
 
-            aux_mask1 = lines.create_grid(label_test.shape, proposed_lines_positive.tolist())
-            aux_mask2 = lines.create_grid(label_test.shape, proposed_lines_negative.tolist())
-            aux_mask3 = lines.create_grid(label_test.shape, true_lines_v + true_lines_h)
-            plt.figure()
-            plt.imshow(aux_mask1)
-            plt.figure()
-            plt.imshow(aux_mask2)
-            plt.figure()
-            plt.imshow(aux_mask3)
-            plt.show()
+            # aux_mask1 = lines.create_grid(label_test.shape, proposed_lines_positive.tolist())
+            # aux_mask2 = lines.create_grid(label_test.shape, proposed_lines_negative.tolist())
+            # aux_mask3 = lines.create_grid(label_test.shape, true_lines_v + true_lines_h)
+            # plt.figure()
+            # plt.imshow(aux_mask1)
+            # plt.figure()
+            # plt.imshow(aux_mask2)
+            # plt.figure()
+            # plt.imshow(aux_mask3)
+            # plt.show()
 
         return dict(image_id=image_id, image=image, seg_label=seg_label, hist_mask=hist_mask, line_points=sampled_points, line_coeffs=proposed_lines, lines_gt=lines_gt)
 

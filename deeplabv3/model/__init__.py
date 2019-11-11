@@ -5,11 +5,8 @@ import torch.nn as nn
 
 models_map = {'deeplabv3' : Deeplabv3,
 			  'deeplabv3+1' : Deeplabv3Plus1,
-			  'deeplabv3+2' : Deeplabv3Plus2,
-			  'mosaic': MosaicNet,
-			  'hist': GaborNet,
-			  'hist2': GaborNet2,
 			  'lines': Deeplabv3PlusLines,
+			  'lines2': Deeplabv3PlusLines2,
 			  }
 
 predict_map = {'argmax': argmax_predict,

@@ -10,7 +10,7 @@ from scipy.spatial import distance
 
 class LineSampler:
 
-	def __init__(self, angle_step=2.5, rho_step=10, npoints=50, plot=False):
+	def __init__(self, angle_step=5.0, rho_step=100, npoints=50, plot=False):
 
 		self.angle_step = angle_step
 		self.rho_step = rho_step
@@ -63,6 +63,7 @@ class LineSampler:
 
 		sampled_lines = []
 		lines_coeffs = []
+		lines_intersects = []
 		for _theta in thetas.tolist():
 			for _rho in rhos.tolist():
 				line_coeffs = general_form(_rho, _theta)
@@ -72,8 +73,9 @@ class LineSampler:
 					line_points = norm_coords(line_points)
 					sampled_lines.append(line_points)
 					lines_coeffs.append(normal_form(*line_coeffs))
+					lines_intersects.append(intersect_points[0] + intersect_points[1])
 
-		return sampled_lines, lines_coeffs
+		return sampled_lines, lines_coeffs, lines_intersects
 
 
 def points2line_eq(point1, point2):
