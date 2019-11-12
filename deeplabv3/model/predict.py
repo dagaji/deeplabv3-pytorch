@@ -99,9 +99,9 @@ def draw_lines2(line_intersect, scores, offset, data):
 
 	probs = torch.sigmoid(scores).cpu().numpy().squeeze()
 	offset = offset.cpu().numpy().squeeze()
-	valid_line = (probs > 0.9)
+	valid_line = (probs > 0.5)
 	sz = data['image'].shape[-2:]
-	line_intersect = line_intersect[valid_line] + offset[valid_line] * 417
+	line_intersect = line_intersect[valid_line] + offset[valid_line] * 500
 	line_intersect1 = line_intersect[:,:2]
 	line_intersect2 = line_intersect[:,2:]
 	line_intersect = [[tuple(pt1), tuple(pt2)] for pt1, pt2 in zip(line_intersect1, line_intersect2)]

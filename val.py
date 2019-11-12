@@ -135,7 +135,7 @@ if __name__ == "__main__":
 		val_expers = {}
 		for _val_exper in val_cfg['val_expers']:
 			model_val = get_model(num_classes, _val_exper["model"]).to(device)
-			val_dataloader = get_dataloader(_id_list_path.format('val'), _val_exper['dataset'], val_cfg['batch_size'], shuffle=False)
+			val_dataloader = get_dataloader(_id_list_path.format('train'), _val_exper['dataset'], val_cfg['batch_size'], shuffle=False)
 			val_expers[_val_exper['name']] = dict(model_val=model_val, val_dataloader=val_dataloader)
 
 		checkpoint_dir = os.path.join('checkpoint', args.dataset, 'partition_{}', exper_name).format(partition_number)
