@@ -95,6 +95,18 @@ def draw_lines(line_probs, data, line_coeffs):
 	# plt.imshow(mask)
 	# plt.show()
 
+def draw_lines2(line_intersect, scores, offset, data):
+
+	probs = torch.sigmoid(scores).cpu().numpy().squeeze()
+	offset = offset.cpu().numpy().squeeze()
+	valid_line = (probs > 0.9)
+	sz = data['image'].shape[-2:]
+	line_intersect = line_intersect[valid_line] + offset[valid_line] * 417
+	line_intersect1 = line_intersect[:,:2]
+	line_intersect2 = line_intersect[:,2:]
+	line_intersect = [[tuple(pt1), tuple(pt2)] for pt1, pt2 in zip(line_intersect1, line_intersect2)]
+	return lines.create_grid_intersect(line_intersect, sz)
+
 
 def _line_detection(x, kernel=np.ones((3,3), np.uint8), iterations=5):
 

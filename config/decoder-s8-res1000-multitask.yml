@@ -45,13 +45,12 @@ training:
             gamma: 0.9
 
     loss: 
-        name: 'hist_loss'
+        name: 'line_detect'
 
     # Model Configuration
     model:
-        name: 'lines'
+        name: 'lines2'
         stride: 8
-        predict: 'draw_lines'
 
             
 
@@ -74,4 +73,4 @@ validation:
           model:
             name: 'lines2'
             stride: 8
-            predict: 'draw_lines'
+            predict: 'draw_lines2'

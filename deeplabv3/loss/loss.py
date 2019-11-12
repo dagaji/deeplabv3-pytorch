@@ -107,6 +107,25 @@ def dice_loss(inputs, data):
 	return _dice_loss(pred_coop, label_dice, mask) + _cross_entropy(pred, label_s)
 
 
+@register.attach('line_detect')
+def line_detect_loss(inputs, data):
+
+	score = inputs["score"]
+	offset = inputs["offset"]
+	x_seg = inputs["seg"]
+	device = x_seg.device
+
+	seg_targets = data['seg_label'].to(device)
+	score_targets = data['lines_gt'].to(device)
+	offset_targets = data['reg_gt'].to(device)
+
+	seg_loss = F.cross_entropy(x_seg, seg_targets, ignore_index=255)
+	score_loss = F.binary_cross_entropy_with_logits(score, score_targets)
+	l1_loss = F.smooth_l1_loss(offset, offset_targets, reduction='none').sum(2).mean()
+
+	return seg_loss + score_loss + l1_loss
+
+
 @register.attach('hist_loss')
 class HistLoss:
 

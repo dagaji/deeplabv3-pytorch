@@ -10,15 +10,14 @@ from scipy.spatial import distance
 
 class LineSampler:
 
-	def __init__(self, angle_step=5.0, rho_step=100, npoints=50, plot=False):
+	def __init__(self, angle_step=5.0, rho_step=100, plot=False):
 
 		self.angle_step = angle_step
 		self.rho_step = rho_step
-		self.npoints = npoints
 		self.plot = plot
 
 
-	def __call__(self, angle_range, sz):
+	def __call__(self, angle_range, sz, npoints=50):
 
 
 		def norm_coords(coords):
@@ -40,11 +39,11 @@ class LineSampler:
 				fig, ax = plt.subplots(1)
 				ax.imshow(np.zeros(sz + (3,), dtype=np.uint8))
 
-			step_len = distance.euclidean(intersect_points[0], intersect_points[1]) / self.npoints
+			step_len = distance.euclidean(intersect_points[0], intersect_points[1]) / npoints
 			diff_vector = np.array(intersect_points[1]) - np.array(intersect_points[0])
 			unit_vector = diff_vector / np.sqrt((diff_vector ** 2).sum())
 			line_points = []
-			for i in np.arange(1, self.npoints):
+			for i in np.arange(1, npoints):
 				line_point = np.array(intersect_points[0]) + i * step_len * unit_vector
 				line_points.append(line_point)
 				if self.plot:

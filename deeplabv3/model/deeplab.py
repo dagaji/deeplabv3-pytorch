@@ -211,10 +211,10 @@ class Deeplabv3PlusLines(_Deeplabv3Plus):
 		res2 = res.transpose(0,1)[self.num_angles:].transpose(0,1)
 		res = (res1 + res2) * prob
 
-		# for _res in res[0]:
-		# 	plt.figure()
-		# 	plt.imshow(_res.cpu().detach().numpy().squeeze(), vmax=1.0)
-		# plt.show()
+		for _res in res[0]:
+			plt.figure()
+			plt.imshow(_res.cpu().detach().numpy().squeeze(), vmax=1.0)
+		plt.show()
 
 		hist = res.view(bs, self.num_angles, -1).sum(2)
 		hist /= (hist.sum(1).unsqueeze(1).repeat([1, self.num_angles]) + 1.0)
@@ -328,10 +328,10 @@ class Deeplabv3PlusLines2(_Deeplabv3Plus):
 		res2 = res.transpose(0,1)[self.num_angles:].transpose(0,1)
 		res = (res1 + res2) * prob
 
-		# for _res in res[0]:
-		# 	plt.figure()
-		# 	plt.imshow(_res.cpu().detach().numpy().squeeze(), vmax=1.0)
-		# plt.show()
+		for _res in res[0]:
+			plt.figure()
+			plt.imshow(_res.cpu().detach().numpy().squeeze(), vmax=1.0)
+		plt.show()
 
 		hist = res.view(bs, self.num_angles, -1).sum(2)
 		hist /= (hist.sum(1).unsqueeze(1).repeat([1, self.num_angles]) + 1.0)
@@ -380,21 +380,22 @@ class Deeplabv3PlusLines2(_Deeplabv3Plus):
 	def forward(self, inputs):
 
 		x = inputs['image'].to(self.get_device())
+		input_shape = x.shape[-2:]
 		x_seg, x_features, x_features_aux = self.extract_features(x)
 
 		if self.training:
 			grid = inputs['line_points'].to(self.get_device())
 		else:
 			angle_range_v, angle_range_h = self.compute_angle_range(x_seg)
-			sampled_points_v, proposed_lines_v = self.line_sampler(angle_range_v, tuple(input_shape))
-			sampled_points_h, proposed_lines_h = self.line_sampler(angle_range_h, tuple(input_shape))
+			sampled_points_v, _, lines_intersect_v = self.line_sampler(angle_range_v, tuple(input_shape))
+			sampled_points_h, _, lines_intersect_h = self.line_sampler(angle_range_h, tuple(input_shape))
 			sampled_points = np.stack(sampled_points_v + sampled_points_h)[np.newaxis,...]
 			grid = torch.Tensor(sampled_points).to(self.get_device())
 
-		line_features = self.extract_features(x_features, x_features_aux, grid)
+		line_features = self.sample_features(x_features, x_features_aux, grid)
 		line_features = self.fc_net(line_features)
 		offset = self.offset_reg(line_features)
-		score = self.line_clf(line_features)
+		score = self.line_clf(line_features).squeeze(2)
 
 		if self.training:
 			result = OrderedDict()
@@ -404,9 +405,9 @@ class Deeplabv3PlusLines2(_Deeplabv3Plus):
 			result["out"]["seg"] = x_seg
 			return result
 		else:
-			proposed_lines = np.array(proposed_lines_v + proposed_lines_h, dtype=np.float32)
-			return self.predict(proposed_lines, score.cpu().numpy(), offset.cpu().numpy())
-			
+			lines_intersect = np.array(lines_intersect_v + lines_intersect_h, dtype=np.float32)
+			return self.predict(lines_intersect, score, offset, inputs)
+
 		# input_shape = x.shape[-2:]
 		# features = self.backbone(x)
 		# x = features["out"]
