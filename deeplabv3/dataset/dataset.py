@@ -116,7 +116,7 @@ class HistDataset(data.Dataset):
         self.rot_angles = np.arange(min_angle, max_angle + angle_step, angle_step)
         self.min_angle = min_angle
         self.max_angle = max_angle
-        self.line_sampler = lines.LineSampler()
+        self.line_sampler = lines.LineSampler(angle_step=1.0, rho_step=50)
         self.setup()
 
     def setup(self,):
@@ -168,7 +168,7 @@ class HistDataset(data.Dataset):
 
         for idx in np.arange(n_lines):
             distance = np.abs(proposed_lines[idx] - true_lines)
-            close_lines = np.logical_and(distance[:,0] < 75, distance[:,1] < np.deg2rad(3.75))
+            close_lines = np.logical_and(distance[:,0] < 25, distance[:,1] < np.deg2rad(5.0))
             if np.any(close_lines):
                 lines_gt[idx] = 1.0
                 # proposed_line_coeffs = lines.general_form(*proposed_lines[idx])
@@ -179,20 +179,7 @@ class HistDataset(data.Dataset):
                 # reg_gt[idx] = np.hstack((offset[0], offset[1]))
                 reg_gt[idx] = _get_diff_intersects(proposed_lines[idx], true_lines[close_lines])
 
-        return lines_gt, reg_gt / sz[0]
-
-
-    def remove_negatives(self, positive_lines, negative_lines, negative_indices):
-
-        new_negative_indices = []
-        n_lines = negative_lines.shape[0]
-        for idx in np.arange(n_lines):
-            distance = np.abs(negative_lines[idx,:] - positive_lines)
-            close_lines = np.logical_and(distance[:,0] < 200, distance[:,1] < np.deg2rad(5.0))
-            if not np.any(close_lines):
-                new_negative_indices.append(negative_indices[idx])
-        return new_negative_indices
-
+        return lines_gt, reg_gt / 500.0
 
 
     def __getitem__(self, index):
@@ -221,12 +208,10 @@ class HistDataset(data.Dataset):
             true_lines_h = lines.get_lines(dists_h, angles_h)
             
             angle_dist = np.abs(self.rot_angles - np.rad2deg(angles_v).mean())
-            angle_indices = np.argsort(angle_dist)[:2]
-            pdb.set_trace()
-            angle_indices = [angle_indices.min(), angle_indices.max()]
-            angle_range_v = self.rot_angles[angle_indices]
-            angle_range_v = np.array((angle_range_v[0]-5.0, angle_range_v[1]+5.0))
-            print(angle_range_v)
+            print(angle_dist.min())
+            closest_angle = self.rot_angles[np.argmin(angle_dist)]
+
+            angle_range_v = np.array((closest_angle, closest_angle))
             angle_range_h = angle_range_v + 90.0
 
             sampled_points_v, proposed_lines_v, _ = self.line_sampler(angle_range_v, label_test.shape, npoints=100)
@@ -235,27 +220,29 @@ class HistDataset(data.Dataset):
             lines_gt_v, reg_gt_v = self.get_line_gt(true_lines_v, proposed_lines_v, label_test.shape)
             lines_gt_h, reg_gt_h = self.get_line_gt(true_lines_h, proposed_lines_h, label_test.shape)
 
-            lines_gt = np.append(lines_gt_v, lines_gt_h)
-            reg_gt = np.vstack((reg_gt_v, reg_gt_h))
+            lines_gt = np.append(lines_gt_v, lines_gt_h).astype(bool)
+            reg_gt = np.vstack((reg_gt_v, reg_gt_h))[lines_gt]
+            proposed_lines_positive = np.array(proposed_lines_v + proposed_lines_h, dtype=np.float32)[lines_gt]
+            sampled_points_positive = np.stack(sampled_points_v + sampled_points_h)[lines_gt]
+            n_positives = proposed_lines_positive.shape[0]
 
-            proposed_lines = np.array(proposed_lines_v + proposed_lines_h, dtype=np.float32)
-            sampled_points = np.stack(sampled_points_v + sampled_points_h)
+            ####################################################################################################
 
-            positive_indices = np.where(lines_gt.astype(bool))[0].tolist()
-            negative_indices = np.where(~lines_gt.astype(bool))[0].tolist()
+            negative_angle = closest_angle + 20.0
+            angle_range_v = np.array((negative_angle, negative_angle))
+            angle_range_h = angle_range_v + 90.0
 
-            proposed_lines_positive = proposed_lines[positive_indices]
-            proposed_lines_negative = proposed_lines[negative_indices]
-            negative_indices = self.remove_negatives(proposed_lines_positive, proposed_lines_negative, negative_indices)
-            # proposed_lines_negative = proposed_lines[negative_indices]
-
-            indices = positive_indices + negative_indices
-            sampled_points = sampled_points[indices]
-            proposed_lines = proposed_lines[indices]
-            lines_gt = lines_gt[indices]
-            reg_gt = reg_gt[indices]
-
-            # print(len(indices))
+            sampled_points_v, proposed_lines_v, _ = self.line_sampler(angle_range_v, label_test.shape, npoints=100)
+            sampled_points_h, proposed_lines_h, _ = self.line_sampler(angle_range_h, label_test.shape, npoints=100)
+            proposed_lines_negative = np.array(proposed_lines_v + proposed_lines_h, dtype=np.float32)
+            sampled_points_negative = np.stack(sampled_points_v + sampled_points_h)
+            shuffled_indices = np.random.permutation(proposed_lines_negative.shape[0])[:n_positives]
+            proposed_lines_negative = proposed_lines_negative[shuffled_indices]
+            sampled_points_negative = sampled_points_negative[shuffled_indices]
+            
+            lines_gt = np.append(np.ones(n_positives, dtype=np.float32), np.zeros(n_positives, dtype=np.float32))
+            reg_gt = np.append(reg_gt, np.zeros((n_positives, 4), dtype=np.float32))
+            sampled_points = np.append(sampled_points_positive, sampled_points_negative)
 
             aux_mask1 = lines.create_grid(label_test.shape, proposed_lines_positive.tolist())
             aux_mask2 = lines.create_grid(label_test.shape, proposed_lines_negative.tolist())
@@ -268,7 +255,7 @@ class HistDataset(data.Dataset):
             plt.imshow(aux_mask3)
             plt.show()
 
-        return dict(image_id=image_id, image=image, seg_label=seg_label, hist_mask=hist_mask, line_points=sampled_points, line_coeffs=proposed_lines, lines_gt=lines_gt, reg_gt=reg_gt)
+        return dict(image_id=image_id, image=image, seg_label=seg_label, hist_mask=hist_mask, line_points=sampled_points, lines_gt=lines_gt, reg_gt=reg_gt)
 
     def __len__(self):
         return len(self.id_list)

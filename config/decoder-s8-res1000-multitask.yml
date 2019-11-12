@@ -12,7 +12,7 @@ training:
         name: 'hist_dataset'
         params:
             root: '/home/davidgj/projects/APR_TAX_RWY'
-            angle_step: 15.0
+            angle_step: 10.0
             min_angle: -30.0
             max_angle: 30.0
             augmentations:
