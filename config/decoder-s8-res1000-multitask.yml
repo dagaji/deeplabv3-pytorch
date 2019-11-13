@@ -70,6 +70,11 @@ validation:
                 angle_step: 15.0
                 min_angle: -30.0
                 max_angle: 30.0
+                # augmentations:
+                #     - rotate:
+                #         sigma_angle: 17.0
+                #         w: 833
+                #         h: 417
           model:
             name: 'lines2'
             stride: 8

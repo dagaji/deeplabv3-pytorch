@@ -119,12 +119,14 @@ def line_detect_loss(inputs, data):
 	score_targets = data['lines_gt'].to(device)
 	offset_targets = data['reg_gt'].to(device)
 
-	seg_loss = F.cross_entropy(x_seg, seg_targets, ignore_index=255)
+	#seg_loss = F.cross_entropy(x_seg, seg_targets, ignore_index=255)
 	score_loss = F.binary_cross_entropy_with_logits(score, score_targets)
 	l1_loss = F.smooth_l1_loss(offset, offset_targets, reduction='none').sum(2) * score_targets / score_targets.sum(1).unsqueeze(1)
 	l1_loss = l1_loss.mean()
-	
-	return seg_loss + score_loss + l1_loss
+	#return l1_loss
+	return score_loss
+
+	#return seg_loss + score_loss + l1_loss
 
 
 @register.attach('hist_loss')

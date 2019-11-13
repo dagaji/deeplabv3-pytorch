@@ -279,6 +279,18 @@ class Deeplabv3PlusLines2(_Deeplabv3Plus):
 
 		self.line_clf = nn.Linear(256, 1, bias=False)
 
+		self.res_net = nn.Sequential(
+			nn.Conv2d(256, 64, kernel_size=1, stride=1, bias=False),
+			nn.GroupNorm(8, 64),
+			nn.ReLU(),
+			nn.Conv2d(64, 64, kernel_size=3, stride=1, padding=12, dilation=12, bias=False),
+			nn.GroupNorm(8, 64),
+			nn.ReLU(),
+			nn.Conv2d(64, 256, kernel_size=1, stride=1, bias=False),
+			nn.GroupNorm(32, 256),
+			nn.ReLU())
+		self.res_net.apply(init_conv)
+
 		angle_step = 15.0
 		angles1 = np.deg2rad(np.arange(-30.0, 30.0 + angle_step, angle_step))
 		self.angles_v = np.rad2deg(angles1)
@@ -294,13 +306,17 @@ class Deeplabv3PlusLines2(_Deeplabv3Plus):
 	def load_state_dict(self, state_dict, strict=True):
 		super(Deeplabv3PlusLines2, self).load_state_dict(state_dict, strict)
 		if 'line_clf.weight' not in state_dict:
-			pdb.set_trace()
 			w0, w1 = self.classifier.weight.data[:2]
 			init_weight = (w1-w0).squeeze().unsqueeze(0)
 			self.line_clf.weight = nn.Parameter(init_weight)
 
 	def get_device(self,):
 		return self.classifier.weight.device
+
+	def trainable_parameters(self,):
+		params1 = list(self.offset_reg.parameters())
+		params2 = list(self.res_net.parameters())
+		return params1+params2
 
 	def compute_angle_range(self, x_seg):
 
@@ -360,21 +376,21 @@ class Deeplabv3PlusLines2(_Deeplabv3Plus):
 		x = features["out"]
 		x_low = features["skip1"]
 		x = self.aspp(x)
-		x = self.decoder(x, x_low)
-		x_features = F.interpolate(x, size=input_shape, mode='bilinear', align_corners=False)
-		x_seg = self.classifier(x_features)
+		x_features = self.decoder(x, x_low)
+		x_features_up = F.interpolate(x_features, size=input_shape, mode='bilinear', align_corners=False)
+		x_seg = self.classifier(x_features_up)
 
 		# x_features_aux = self.aux_net(features["aux"])
 		# x_features_aux = F.interpolate(x_features_aux, size=input_shape, mode='bilinear', align_corners=False)
 
-		return x_seg, x_features
+		return x_seg, x_features, x_features_up
 
 
 	def forward(self, inputs):
 
 		x = inputs['image'].to(self.get_device())
 		input_shape = x.shape[-2:]
-		x_seg, x_features = self.extract_features(x)
+		x_seg, x_features, x_features_up = self.extract_features(x)
 
 		if self.training:
 			grid = inputs['line_points'].to(self.get_device())
@@ -387,9 +403,11 @@ class Deeplabv3PlusLines2(_Deeplabv3Plus):
 
 		# line_features = self.sample_features(x_features, x_features_aux, grid)
 		# line_features = self.fc_net(line_features)
-		line_features = F.grid_sample(x_features, grid).transpose(1,2).mean(3)
-		offset = self.offset_reg(line_features)
-		score = self.line_clf(line_features).squeeze(2)
+		line_features = F.grid_sample(x_features_up, grid).transpose(1,2).mean(3)
+		res_features = F.interpolate(self.res_net(x_features), size=input_shape, mode='bilinear', align_corners=False)
+		line_res_features = F.grid_sample(res_features, grid).transpose(1,2).mean(3)
+		offset = self.offset_reg(line_res_features)
+		score = self.line_clf(line_features + line_res_features).squeeze(2)
 
 		if self.training:
 			result = OrderedDict()
@@ -401,39 +419,6 @@ class Deeplabv3PlusLines2(_Deeplabv3Plus):
 		else:
 			lines_intersect = np.array(lines_intersect_v + lines_intersect_h, dtype=np.float32)
 			return self.predict(lines_intersect, score, offset, inputs)
-
-		# input_shape = x.shape[-2:]
-		# features = self.backbone(x)
-		# x = features["out"]
-		# x_low = features["skip1"]
-		# x = self.aspp(x)
-		# x = self.decoder(x, x_low)
-		# x_features = F.interpolate(x, size=input_shape, mode='bilinear', align_corners=False)
-		# x_seg = self.classifier(x_features)
-
-		# x_features_aux = self.aux_net(features["aux"])
-		# x_features_aux = F.interpolate(x_features_aux, size=input_shape, mode='bilinear', align_corners=False)
-
-		# angle_range_v, angle_range_h = self.compute_angle_range(x_seg)
-		# sampled_points_v, proposed_lines_v = self.line_sampler(angle_range_v, tuple(input_shape))
-		# sampled_points_h, proposed_lines_h = self.line_sampler(angle_range_h, tuple(input_shape))
-
-		# proposed_lines = np.array(proposed_lines_v + proposed_lines_h, dtype=np.float32)
-		# sampled_points = np.stack(sampled_points_v + sampled_points_h)[np.newaxis,...]
-		# grid = torch.Tensor(sampled_points).to(self.get_device())
-
-		# sampled_lines = F.grid_sample(x_features, grid).transpose(1,2).mean(3)
-		# sampled_lines = self.normalize_sampled_features(sampled_lines)
-
-		# sampled_lines_aux = F.grid_sample(x_features_aux, grid).transpose(1,2).mean(3)
-		# sampled_lines_aux = self.normalize_sampled_features(sampled_lines_aux)
-
-		# line_features = torch.cat([sampled_lines, sampled_lines_aux], dim=2)
-		# line_features = self.fc_net(line_features)
-		# offset = self.offset_reg(line_features)
-		# score = self.line_clf(line_features)
-
-		# return self.predict(proposed_lines, score, offset)
 			
 
 

@@ -97,8 +97,7 @@ if __name__ == "__main__":
 		# params_1 = [param[1] for param in model_train.named_parameters() if param[0] != "bias"]
 		# params_2 = [model_train.bias]
 		# params_to_update = [{'params': params_1, 'lr': 0.0005}, {'params': params_2, 'lr': 0.01}]
-		
-		optimizer = optim.SGD(model_train.parameters(), lr=0.0005, momentum=0.9, weight_decay=1e-5)
+		optimizer = optim.SGD(model_train.trainable_parameters(), lr=0.0005, momentum=0.9, weight_decay=1e-5)
 
 		checkpoint_dir = os.path.join('checkpoint', args.dataset, 'partition_{}', exper_name).format(partition_number)
 		last_checkpoint_path = get_last_checkpoint(checkpoint_dir)

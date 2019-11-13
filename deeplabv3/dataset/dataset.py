@@ -116,7 +116,7 @@ class HistDataset(data.Dataset):
         self.rot_angles = np.arange(min_angle, max_angle + angle_step, angle_step)
         self.min_angle = min_angle
         self.max_angle = max_angle
-        self.line_sampler = lines.LineSampler(angle_step=1.0, rho_step=50)
+        self.line_sampler = lines.LineSampler(angle_step=1.0, rho_step=100)
         self.setup()
 
     def setup(self,):
@@ -179,7 +179,7 @@ class HistDataset(data.Dataset):
                 # reg_gt[idx] = np.hstack((offset[0], offset[1]))
                 reg_gt[idx] = _get_diff_intersects(proposed_lines[idx], true_lines[close_lines])
 
-        return lines_gt, reg_gt / 500.0
+        return lines_gt, reg_gt
 
 
     def __getitem__(self, index):
@@ -224,6 +224,15 @@ class HistDataset(data.Dataset):
             sampled_points_positive = np.stack(sampled_points_v + sampled_points_h)[lines_gt]
             n_positives = proposed_lines_positive.shape[0]
 
+            aux_mask3 = lines.create_grid(label_test.shape, true_lines_v + true_lines_h)
+            aux_mask4 = lines.create_grid(label_test.shape, proposed_lines_v + proposed_lines_h)
+            aux_mask = np.zeros(aux_mask3.shape, dtype=int)
+            aux_mask[aux_mask3 == 1] = 1
+            aux_mask[aux_mask4 == 1] = 2
+            plt.figure()
+            plt.imshow(aux_mask)
+            plt.show()
+
             ####################################################################################################
 
             negative_angle = closest_angle + 20.0
@@ -252,6 +261,7 @@ class HistDataset(data.Dataset):
             # plt.figure()
             # plt.imshow(aux_mask3)
             # plt.show()
+            
 
         return dict(image_id=image_id, image=image, seg_label=seg_label, line_points=sampled_points, lines_gt=lines_gt, reg_gt=reg_gt)
 
