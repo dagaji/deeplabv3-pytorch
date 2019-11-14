@@ -274,6 +274,120 @@ class HistDataset(data.Dataset):
         return fmt_str
 
 
+@register.attach('roi_dataset')
+class ROIDataset(data.Dataset):
+
+    def __init__(self, root, id_list_path, angle_step=15.0, min_angle=-30.0, max_angle=30.0, augmentations=[]):
+        self.root = root
+        self.id_list = np.loadtxt(id_list_path, dtype=str)
+        self.mean = [0.485, 0.456, 0.406]
+        self.var = [0.229, 0.224, 0.225]
+        self.augmentations = Compose(augmentations)
+        self.rot_angles = np.arange(min_angle, max_angle + angle_step, angle_step)
+        self.min_angle = min_angle
+        self.max_angle = max_angle
+        self.ROI_sampler = lines.ROISampler(angle_step=1.0)
+        self.setup()
+
+    def setup(self,):
+        self.id_list = [img_id for img_id in self.id_list.tolist() if "APR" in img_id]
+
+    def _load_data(self, idx):
+        """
+        Load the image and label in numpy.ndarray
+        """
+        image_id = self.id_list[idx] + '.png'
+        img_path = os.path.join(self.root, "images", image_id)
+        label_path = os.path.join(self.root, "masks", image_id)
+        label_test_path = os.path.join(self.root, "masks_test", image_id)
+
+        img = np.asarray(imread(img_path))
+        label = np.asarray(imread(label_path))[..., 0]
+        label_test = np.asarray(imread(label_test_path))[..., 0]
+        label_test[label_test == 255] = 0
+
+        return image_id, img, label, label_test
+
+    def get_line_gt(self, true_lines, ROI_projections):
+
+        n_lines = len(ROI_projections)
+        lines_gt = np.zeros(n_lines, dtype=np.float32)
+        reg_gt = np.zeros((n_lines, 2), dtype=np.float32)
+
+        for idx, _ROI_projection in enumerate(ROI_projections):
+            for _true_line in true_lines:
+                _projection = _ROI_projection(_true_line)
+                if _projection is not None:
+                    lines_gt[idx] = 1.0
+                    reg_gt[idx] = np.array(_projection, dtype=np.float32)
+                    break
+
+        return lines_gt, reg_gt
+
+
+    def __getitem__(self, index):
+
+        image_id, img, label, label_test = self._load_data(index)
+
+        image, _label = self.augmentations(img, np.dstack((label, label_test)))
+        label, label_test = np.dsplit(_label, 2)
+        label = np.squeeze(label)
+        label_test = np.squeeze(label_test)
+
+        image = TF.to_tensor(image)
+        image = TF.normalize(image, self.mean, self.var)
+        image = image.numpy()
+
+        seg_label = label.astype(np.int64)
+        # line_points = np.zeros((200, 200, 2), dtype=np.float32)
+
+        label_test = (label_test == 1)
+        if np.any(label_test):
+
+            _, angles_v, dists_v = lines.search_lines(label_test, (self.min_angle, self.max_angle), npoints=1000, min_distance=100, min_angle=300, threshold=None)
+            true_lines_v = lines.get_lines(dists_v, angles_v)
+            _, angles_h, dists_h = lines.search_lines(label_test, (self.min_angle + 90, self.max_angle + 90), npoints=1000, min_distance=100, min_angle=300, threshold=None)
+            true_lines_h = lines.get_lines(dists_h, angles_h)
+            
+            angle_dist = np.abs(self.rot_angles - np.rad2deg(angles_v).mean())
+            closest_angle = self.rot_angles[np.argmin(angle_dist)]
+
+            angle_range_v = np.array((closest_angle, closest_angle))
+            angle_range_h = angle_range_v + 90.0
+
+            ROIs_projection_v, ROIs_coords_v = self.ROI_sampler(angle_range_v, label_test.shape, npoints=70)
+            ROIs_projection_h, ROIs_coords_h = self.ROI_sampler(angle_range_h, label_test.shape, npoints=70)
+
+            lines_gt_v, reg_gt_v = self.get_line_gt(true_lines_v, ROIs_projection_v)
+            lines_gt_h, reg_gt_h = self.get_line_gt(true_lines_h, ROIs_projection_h)
+
+            lines_gt = np.append(lines_gt_v, lines_gt_h)
+            reg_gt = np.vstack((reg_gt_v, reg_gt_h))
+            ROIs_coords = np.array(ROIs_coords_v + ROIs_coords_h, dtype=np.float32)
+
+            # aux_mask1 = lines.create_grid(label_test.shape, proposed_lines_positive.tolist())
+            # aux_mask2 = lines.create_grid(label_test.shape, proposed_lines_negative.tolist())
+            # aux_mask3 = lines.create_grid(label_test.shape, true_lines_v + true_lines_h)
+            # plt.figure()
+            # plt.imshow(aux_mask1)
+            # plt.figure()
+            # plt.imshow(aux_mask2)
+            # plt.figure()
+            # plt.imshow(aux_mask3)
+            # plt.show()
+            
+
+        return dict(image_id=image_id, image=image, seg_label=seg_label, ROIs_coords=ROIs_coords, lines_gt=lines_gt, reg_gt=reg_gt)
+
+    def __len__(self):
+        return len(self.id_list)
+
+    def __repr__(self):
+        fmt_str = "     Dataset: " + self.__class__.__name__ + "\n"
+        fmt_str += "    Root: {}".format(self.root)
+        return fmt_str
+
+
 
 
 @register.attach('base_dataset')

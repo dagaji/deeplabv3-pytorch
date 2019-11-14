@@ -8,6 +8,129 @@ import deeplabv3.vis as vis
 import math
 from scipy.spatial import distance
 
+class ROISampler:
+
+	def __init__(self, angle_step=5.0, rho_step=100, ROI_nlines=7, plot=False):
+
+		self.angle_step = angle_step
+		self.rho_step = rho_step
+		self.plot = plot
+		self.ROI_width = rho_step / 4
+		self.ROI_nlines = ROI_nlines
+		self.ROI_rho_step = self.ROI_width / ROI_nlines
+
+	def __call__(self, angle_range, sz, npoints=50):
+
+		is_vertical = (-30 <= angle_range[0] <= 30)
+
+		def norm_coords(coords):
+			coords[:, 0] = 2 * coords[:,0] / float(sz[1] - 1) - 1
+			coords[:, 1] = 2 * coords[:,1] / float(sz[0] - 1) - 1
+			return coords
+
+		def sort_intersects(intersect_points):
+			pdb.set_trace()
+			axis = 1 if is_vertical else 0
+			intersect_points = sorted(intersect_points, key=lambda x: x[axis])
+			return intersect_points
+
+		def get_ROI_limits(rho, theta):
+
+			line_coeffs = general_form(rho, theta)
+			intersect_points = find_intesect_borders(line_coeffs, sz)
+
+			if intersect_points is not None:
+				intersect_points = sort_intersects(intersect_points)
+				limit1 = get_line_coeffs(intersect_points[0], theta + np.pi/2)
+				limit2 = get_line_coeffs(intersect_points[1], theta + np.pi/2)
+				return intersect_points, (limit1, limit2)
+			return None
+
+		def get_ROI_projection(line_coeffs, origins, limits):
+
+			def _project(_limits, _origin):
+				intersect = np.array(find_intersect(line_coeffs, _limits))
+				dist = np.sqrt(((intersect - _origin) ** 2).sum())
+				return dist / self.ROI_width
+
+			origins = np.array(origins)
+			projection1 = _project(limits[0], origins[0])
+			projection2 = _project(limits[1], origins[1])
+
+			if projection1 < 1.0 and projection2 < 1.0:
+				return projection1, projection2
+			return return None
+
+		def sample_ROI(rho, theta):
+
+			min_rho = rho - self.ROI_width / 2
+			max_rho = rho + self.ROI_width / 2 + self.ROI_rho_step
+			rhos = np.arange(min_rho, max_rho, self.ROI_rho_step)
+
+			ROI_coords = []
+			for _rho in rhos.tolist():
+				line_coeffs = general_form(_rho, theta)
+				intersect_points = find_intesect_borders(line_coeffs, sz)
+				if intersect_points is not None:
+					intersect_points = sort_intersects(intersect_points)
+					line_points = line_coords(intersect_points, theta)
+					line_points = norm_coords(line_points)
+					ROI_coords.append(line_points)
+				else:
+					break
+
+			return ROI_coords
+
+
+		def line_coords(intersect_points, orientation):
+
+			if self.plot:
+				fig, ax = plt.subplots(1)
+				ax.imshow(np.zeros(sz + (3,), dtype=np.uint8))
+				circle = plt.Circle(intersect_points[0], 5, color='b')
+				ax.add_patch(circle)
+				circle = plt.Circle(intersect_points[1], 5, color='b')
+				ax.add_patch(circle)
+
+			if self.plot:
+				fig, ax = plt.subplots(1)
+				ax.imshow(np.zeros(sz + (3,), dtype=np.uint8))
+
+			step_len = distance.euclidean(intersect_points[0], intersect_points[1]) / npoints
+			diff_vector = np.array(intersect_points[1]) - np.array(intersect_points[0])
+			unit_vector = diff_vector / np.sqrt((diff_vector ** 2).sum())
+			line_points = []
+			for i in np.arange(1, npoints):
+				line_point = np.array(intersect_points[0]) + i * step_len * unit_vector
+				line_points.append(line_point)
+				if self.plot:
+					circle = plt.Circle(tuple(line_point.tolist()), 2, color='b')
+					ax.add_patch(circle)
+
+			if self.plot:
+				plt.show()
+
+			return np.array(line_points).astype(np.float32)
+
+		max_distance = 2 * np.sqrt(sz[0] ** 2 + sz[1] ** 2)
+		rhos =  np.arange(-max_distance / 2.0, max_distance / 2.0 + self.rho_step, self.rho_step)
+		thetas = np.arange(angle_range[0], angle_range[1] + self.angle_step, self.angle_step)
+		thetas = np.deg2rad(thetas)
+
+		ROIs_projection = []
+		ROIs_coords = []
+		for _theta in thetas.tolist():
+			for _rho in rhos.tolist():
+				result = get_ROI_limits(_rho, _theta)
+				if result is not None:
+					_ROI_coords = sample_ROI(_rho, _theta)
+					if len(_ROI_coords) == self.ROI_nlines:
+						intersect_points, limits = result
+						ROIs_projection.append(lambda x : get_ROI_projection(x, intersect_points, limits))
+						ROIs_coords.append(_ROI_coords)
+
+		return ROIs_projection, ROIs_coords
+
 class LineSampler:
 
 	def __init__(self, angle_step=5.0, rho_step=100, plot=False):
@@ -75,6 +198,9 @@ class LineSampler:
 					lines_intersects.append(intersect_points[0] + intersect_points[1])
 
 		return sampled_lines, lines_coeffs, lines_intersects
+
+
+
 
 
 def points2line_eq(point1, point2):
