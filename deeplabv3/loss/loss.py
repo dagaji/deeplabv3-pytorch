@@ -112,22 +112,29 @@ def line_detect_loss(inputs, data):
 
 	score = inputs["score"]
 	offset = inputs["offset"]
-	x_seg = inputs["seg"]
-	device = x_seg.device
+	iou = inputs["iou"]
+	device = score.device
 
-	seg_targets = data['seg_label'].to(device)
+	iou_targets = data['iou_gt'].to(device)
 	score_targets = data['lines_gt'].to(device)
 	offset_targets = data['reg_gt'].to(device)
+	norm_den = score_targets.sum(1)
 
-	#seg_loss = F.cross_entropy(x_seg, seg_targets, ignore_index=255)
 	score_loss = F.binary_cross_entropy_with_logits(score, score_targets)
-	l1_loss = F.smooth_l1_loss(offset, offset_targets, reduction='none').sum(2) * score_targets / score_targets.sum(1).unsqueeze(1)
+
+	l1_loss = F.smooth_l1_loss(offset, offset_targets, reduction='none')
+	l1_loss = (l1_loss * score_targets).sum(1) / norm_den
 	l1_loss = l1_loss.mean()
-	#return l1_loss
-	return score_loss
 
-	#return seg_loss + score_loss + l1_loss
+	iou_loss = F.binary_cross_entropy_with_logits(iou, iou_targets, reduction='none')
+	iou_loss = (iou_loss * score_targets).sum(1) / norm_den
+	iou_loss = iou_loss.mean()
 
+	# print("score_loss: {}".format(score_loss.item()))
+	# print("l1_loss: {}".format(l1_loss.item()))
+	# print("iou_loss: {}".format(iou_loss.item()))
+
+	return score_loss + l1_loss + iou_loss
 
 @register.attach('hist_loss')
 class HistLoss:

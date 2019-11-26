@@ -7,6 +7,7 @@ models_map = {'deeplabv3' : Deeplabv3,
 			  'deeplabv3+1' : Deeplabv3Plus1,
 			  'lines': Deeplabv3PlusLines,
 			  'lines2': Deeplabv3PlusLines2,
+			  'lines3': Deeplabv3PlusLines3,
 			  }
 
 predict_map = {'argmax': argmax_predict,
@@ -14,6 +15,7 @@ predict_map = {'argmax': argmax_predict,
 			   'line_dect_multi': MultiFrameMerge(nframes=9),
 			   'draw_lines': draw_lines,
 			   'draw_lines2': draw_lines2,
+			   'draw_lines3': draw_lines3,
 			   }
 
 output_stride_params = { 16: dict(replace_stride_with_dilation=[False, False, True], rates=[6, 12, 18]),

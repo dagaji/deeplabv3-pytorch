@@ -116,7 +116,8 @@ class HistDataset(data.Dataset):
         self.rot_angles = np.arange(min_angle, max_angle + angle_step, angle_step)
         self.min_angle = min_angle
         self.max_angle = max_angle
-        self.line_sampler = lines.LineSampler(angle_step=1.0, rho_step=100)
+        self.line_sampler = lines.LineSampler(angle_step=5.0, rho_step=100)
+        self.max_offset = 45
         self.setup()
 
     def setup(self,):
@@ -141,45 +142,70 @@ class HistDataset(data.Dataset):
 
     def get_line_gt(self, true_lines, proposed_lines, sz):
 
-        def _get_diff_intersects(proposed_line, true_lines):
+        def _get_iou(true_lines, true_masks, proposed_line):
 
-            proposed_line_coeffs = lines.general_form(*proposed_line)
-            _intersects = lines.find_intesect_borders(proposed_line_coeffs, sz)
-            proposed_line_intersects = np.array(_intersects[0] + _intersects[1], dtype=np.float32)[np.newaxis,:]
+            opt_lines = []
+            ious = []
+            proposed_rho, proposed_theta = proposed_line
 
-            true_lines_intersects = []
-            for true_line in true_lines.tolist():
-                true_line_coeffs = lines.general_form(*true_line)
-                _intersects = lines.find_intesect_borders(true_line_coeffs, sz)
-                true_lines_intersects.append(_intersects[0] + _intersects[1])
-            true_lines_intersects = np.array(true_lines_intersects, dtype=np.float32)
+            for idx in np.arange(true_masks.shape[0]):
 
-            diff_intersects = true_lines_intersects - proposed_line_intersects
-            diff_intersects_l1 = np.abs(diff_intersects).sum(1)
+                _true_line_coeffs = lines.general_form(*true_lines[idx].tolist())
+                intersect_borders = np.array(lines.find_intesect_borders(_true_line_coeffs, sz))
+                mid_point = intersect_borders.mean(0)
+                opt_rho = mid_point[0] * np.cos(proposed_theta) + mid_point[1] * np.sin(proposed_theta)
+                opt_line = (opt_rho, proposed_theta)
 
-            return diff_intersects[np.argmin(diff_intersects_l1)]
+                proposed_mask = _create_mask(opt_line, guard=False, width=16)
+                not_ignored = np.logical_and(true_masks[idx] > 0, true_masks[idx] < 2)
+                hist = np.bincount(2 * true_masks[idx][not_ignored].flatten() + proposed_mask[not_ignored].flatten(), minlength=4).reshape((2,2))
+                iou = (np.diag(hist) / (hist.sum(axis=1) + hist.sum(axis=0) - np.diag(hist)))[1]
+                
+                ious.append(iou)
+                opt_lines.append(opt_line)
 
+            opt_rhos = np.array(opt_lines)[:,0]
+            _idx = np.argmin(np.abs(opt_rhos - proposed_rho))
+
+            return opt_lines[_idx], ious[_idx], true_masks[_idx]
+
+        def _plot_line(true_mask, proposed_mask, opt_mask, iou):
+            vis_mask = opt_mask.copy()
+            vis_mask[true_mask == 1] = 2
+            vis_mask[proposed_mask == 1] = 3
+            plt.figure()
+            plt.imshow(vis_mask)
+            plt.title('IoU: {}'.format(iou))
+
+        def _create_mask(_line, width=8 , guard=True):
+
+            line_mask = lines.create_grid(sz, [_line], width=width)
+            if guard:
+                return 2  * line_mask - lines.create_grid(sz, [_line], width=2*width)
+            return line_mask
+
+        true_lines_masks = np.array([_create_mask(_line, guard=True) for _line in true_lines], dtype=int)
         true_lines = np.array(true_lines, dtype=np.float32)
         proposed_lines = np.array(proposed_lines, dtype=np.float32)
 
         n_lines = proposed_lines.shape[0]
         lines_gt = np.zeros(n_lines, dtype=np.float32)
-        reg_gt = np.zeros((n_lines, 4), dtype=np.float32)
+        iou_gt = np.zeros(n_lines, dtype=np.float32)
+        reg_gt = np.zeros(n_lines, dtype=np.float32)
 
         for idx in np.arange(n_lines):
             distance = np.abs(proposed_lines[idx] - true_lines)
-            close_lines = np.logical_and(distance[:,0] < 25, distance[:,1] < np.deg2rad(5.0))
+            close_lines = np.logical_and(distance[:,0] < self.max_offset, distance[:,1] < np.deg2rad(5.0))
             if np.any(close_lines):
+                opt_line, iou, _true_mask = _get_iou(true_lines[close_lines], true_lines_masks[close_lines], proposed_lines[idx])
                 lines_gt[idx] = 1.0
-                # proposed_line_coeffs = lines.general_form(*proposed_lines[idx])
-                # closest_line_coeffs = lines.general_form(*true_lines[np.argmin(distance)])
-                # proposed_line_intersects = lines.find_intesect_borders(proposed_line_coeffs, sz)
-                # closest_line_intersects = lines.find_intesect_borders(closest_line_coeffs, sz)
-                # offset = np.array(proposed_line_intersects) - np.array(closest_line_intersects)
-                # reg_gt[idx] = np.hstack((offset[0], offset[1]))
-                reg_gt[idx] = _get_diff_intersects(proposed_lines[idx], true_lines[close_lines])
+                iou_gt[idx] = iou
+                reg_gt[idx] = (proposed_lines[idx][0] - opt_line[0]) / self.max_offset
 
-        return lines_gt, reg_gt
+        #         _plot_line(_true_mask, _create_mask(proposed_lines[idx], guard=False), _create_mask(opt_line, guard=False), iou)
+        # plt.show()
+
+        return lines_gt, iou_gt, reg_gt
 
 
     def __getitem__(self, index):
@@ -207,63 +233,31 @@ class HistDataset(data.Dataset):
             true_lines_h = lines.get_lines(dists_h, angles_h)
             
             angle_dist = np.abs(self.rot_angles - np.rad2deg(angles_v).mean())
-            closest_angle = self.rot_angles[np.argmin(angle_dist)]
-
-            angle_range_v = np.array((closest_angle, closest_angle))
+            angle_range_v = self.rot_angles[np.argsort(angle_dist)[:2]]
+            angle_range_v.sort()
             angle_range_h = angle_range_v + 90.0
 
             sampled_points_v, proposed_lines_v, _ = self.line_sampler(angle_range_v, label_test.shape, npoints=100)
             sampled_points_h, proposed_lines_h, _ = self.line_sampler(angle_range_h, label_test.shape, npoints=100)
 
-            lines_gt_v, reg_gt_v = self.get_line_gt(true_lines_v, proposed_lines_v, label_test.shape)
-            lines_gt_h, reg_gt_h = self.get_line_gt(true_lines_h, proposed_lines_h, label_test.shape)
+            lines_gt_v, iou_gt_v, reg_gt_v = self.get_line_gt(true_lines_v, proposed_lines_v, label_test.shape)
+            lines_gt_h, iou_gt_h, reg_gt_h = self.get_line_gt(true_lines_h, proposed_lines_h, label_test.shape)
 
-            lines_gt = np.append(lines_gt_v, lines_gt_h).astype(bool)
-            reg_gt = np.vstack((reg_gt_v, reg_gt_h))[lines_gt]
-            proposed_lines_positive = np.array(proposed_lines_v + proposed_lines_h, dtype=np.float32)[lines_gt]
-            sampled_points_positive = np.stack(sampled_points_v + sampled_points_h)[lines_gt]
-            n_positives = proposed_lines_positive.shape[0]
+            lines_gt = np.append(lines_gt_v, lines_gt_h)
+            iou_gt = np.append(iou_gt_v, iou_gt_h)
+            reg_gt = np.append(reg_gt_v, reg_gt_h)
 
-            aux_mask3 = lines.create_grid(label_test.shape, true_lines_v + true_lines_h)
-            aux_mask4 = lines.create_grid(label_test.shape, proposed_lines_v + proposed_lines_h)
-            aux_mask = np.zeros(aux_mask3.shape, dtype=int)
-            aux_mask[aux_mask3 == 1] = 1
-            aux_mask[aux_mask4 == 1] = 2
-            plt.figure()
-            plt.imshow(aux_mask)
-            plt.show()
+            proposed_lines = np.array(proposed_lines_v + proposed_lines_h, dtype=np.float32)
+            sampled_points = np.stack(sampled_points_v + sampled_points_h)
 
-            ####################################################################################################
-
-            negative_angle = closest_angle + 20.0
-            angle_range_v = np.array((negative_angle, negative_angle))
-            angle_range_h = angle_range_v + 90.0
-
-            sampled_points_v, proposed_lines_v, _ = self.line_sampler(angle_range_v, label_test.shape, npoints=100)
-            sampled_points_h, proposed_lines_h, _ = self.line_sampler(angle_range_h, label_test.shape, npoints=100)
-            proposed_lines_negative = np.array(proposed_lines_v + proposed_lines_h, dtype=np.float32)
-            sampled_points_negative = np.stack(sampled_points_v + sampled_points_h)
-            shuffled_indices = np.random.permutation(proposed_lines_negative.shape[0])[:n_positives]
-            proposed_lines_negative = proposed_lines_negative[shuffled_indices]
-            sampled_points_negative = sampled_points_negative[shuffled_indices]
-            
-            lines_gt = np.append(np.ones(n_positives, dtype=np.float32), np.zeros(n_positives, dtype=np.float32))
-            reg_gt = np.vstack((reg_gt, np.zeros((n_positives, 4), dtype=np.float32)))
-            sampled_points = np.concatenate((sampled_points_positive, sampled_points_negative), axis=0)
-
-            # aux_mask1 = lines.create_grid(label_test.shape, proposed_lines_positive.tolist())
-            # aux_mask2 = lines.create_grid(label_test.shape, proposed_lines_negative.tolist())
+            # aux_mask1 = lines.create_grid(label_test.shape, proposed_lines[iou_gt > 0.35].tolist())
             # aux_mask3 = lines.create_grid(label_test.shape, true_lines_v + true_lines_h)
-            # plt.figure()
-            # plt.imshow(aux_mask1)
-            # plt.figure()
-            # plt.imshow(aux_mask2)
+            # aux_mask3[aux_mask1 == 1] = 2
             # plt.figure()
             # plt.imshow(aux_mask3)
             # plt.show()
             
-
-        return dict(image_id=image_id, image=image, seg_label=seg_label, line_points=sampled_points, lines_gt=lines_gt, reg_gt=reg_gt)
+        return dict(image_id=image_id, image=image, seg_label=seg_label, sampled_points=sampled_points, lines_gt=lines_gt, iou_gt=iou_gt, reg_gt=reg_gt)
 
     def __len__(self):
         return len(self.id_list)
@@ -316,13 +310,43 @@ class ROIDataset(data.Dataset):
 
         for idx, _ROI_projection in enumerate(ROI_projections):
             for _true_line in true_lines:
-                _projection = _ROI_projection(_true_line)
+                _projection = _ROI_projection(lines.general_form(*_true_line))
                 if _projection is not None:
                     lines_gt[idx] = 1.0
                     reg_gt[idx] = np.array(_projection, dtype=np.float32)
                     break
 
         return lines_gt, reg_gt
+
+    def plot_ROIs(self, true_lines, ROIs_limits, line_gt, sz):
+
+        ROIs_limits1, ROIs_limits2 = np.array(ROIs_limits).transpose((1,0,2))
+        is_positive = line_gt.astype(bool)
+
+        true_mask = lines.create_grid(sz, true_lines)
+        all_lines = lines.create_grid(sz, ROIs_limits1.tolist() + ROIs_limits2.tolist())
+        all_lines[true_mask == 1] = 2
+
+        plt.figure()
+        plt.imshow(all_lines)
+        plt.show()
+
+        # ROIs_limits_positive = ROIs_limits1[is_positive].tolist() + ROIs_limits2[is_positive].tolist()
+        # ROIs_limits_negative = ROIs_limits1[~is_positive].tolist() + ROIs_limits2[~is_positive].tolist()
+
+        # true_mask = lines.create_grid(sz, true_lines)
+
+        # positive_mask = true_mask.copy()
+        # positive_mask[lines.create_grid(sz, ROIs_limits_positive) == 1] = 2
+
+        # negative_mask = true_mask.copy()
+        # negative_mask[lines.create_grid(sz, ROIs_limits_negative) == 1] = 2
+
+        # plt.figure()
+        # plt.imshow(positive_mask)
+        # plt.figure()
+        # plt.imshow(negative_mask)
+        # plt.show()
 
 
     def __getitem__(self, index):
@@ -350,13 +374,14 @@ class ROIDataset(data.Dataset):
             true_lines_h = lines.get_lines(dists_h, angles_h)
             
             angle_dist = np.abs(self.rot_angles - np.rad2deg(angles_v).mean())
+            print(angle_dist.min())
             closest_angle = self.rot_angles[np.argmin(angle_dist)]
 
             angle_range_v = np.array((closest_angle, closest_angle))
             angle_range_h = angle_range_v + 90.0
 
-            ROIs_projection_v, ROIs_coords_v = self.ROI_sampler(angle_range_v, label_test.shape, npoints=70)
-            ROIs_projection_h, ROIs_coords_h = self.ROI_sampler(angle_range_h, label_test.shape, npoints=70)
+            ROIs_projection_v, ROIs_coords_v, ROIs_limits_v = self.ROI_sampler(angle_range_v, label_test.shape, npoints=70)
+            ROIs_projection_h, ROIs_coords_h, ROIs_limits_h = self.ROI_sampler(angle_range_h, label_test.shape, npoints=70)
 
             lines_gt_v, reg_gt_v = self.get_line_gt(true_lines_v, ROIs_projection_v)
             lines_gt_h, reg_gt_h = self.get_line_gt(true_lines_h, ROIs_projection_h)
@@ -364,6 +389,9 @@ class ROIDataset(data.Dataset):
             lines_gt = np.append(lines_gt_v, lines_gt_h)
             reg_gt = np.vstack((reg_gt_v, reg_gt_h))
             ROIs_coords = np.array(ROIs_coords_v + ROIs_coords_h, dtype=np.float32)
+
+            self.plot_ROIs(true_lines_v, ROIs_limits_v, lines_gt_v, label_test.shape)
+            self.plot_ROIs(true_lines_h, ROIs_limits_h, lines_gt_h, label_test.shape)
 
             # aux_mask1 = lines.create_grid(label_test.shape, proposed_lines_positive.tolist())
             # aux_mask2 = lines.create_grid(label_test.shape, proposed_lines_negative.tolist())

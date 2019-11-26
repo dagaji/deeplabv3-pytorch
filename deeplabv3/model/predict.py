@@ -12,6 +12,8 @@ import matplotlib.pyplot as plt
 from skimage.transform import hough_line
 from scipy.signal import find_peaks
 from deeplabv3.lines import general_form, find_intesect_borders, normal_form
+from sklearn.cluster import MeanShift
+from functools import partial
 
 def getLargestCC(labels, segmentation):
     return np.argmax(np.bincount(labels.flat, weights=segmentation.flat))
@@ -107,6 +109,49 @@ def draw_lines2(line_intersect, scores, offset, data):
 	line_intersect = [[tuple(pt1), tuple(pt2)] for pt1, pt2 in zip(line_intersect1, line_intersect2)]
 	return lines.create_grid_intersect(line_intersect, sz)
 
+def draw_lines3(proposed_lines, score, iou, reg_offset, sz):
+
+	def _cluster_lines(_lines, iou, reg_offset, _is):
+
+		_lines = _lines[_is]
+		iou = iou[_is]
+		reg_offset = reg_offset[_is]
+
+		pdb.set_trace()
+
+		ms = MeanShift(bandwidth=50.0)
+		pred = ms.fit_predict(_lines[:,0])
+		cluster_labels = np.unique(pred)
+
+		cluster_lines = []
+		for _label in cluster_labels.tolist():
+			idx = np.argmax(iou[pred == _label])
+			cluster_offset = reg_offset[idx] * 45
+			cluster_line = _line[idx]
+			cluster_line[0] += cluster_offset
+			cluster_lines.append(cluster_line)
+
+		return cluster_lines
+
+	close_lines = (score > 0.5)
+	proposed_lines = proposed_lines[close_lines]
+	iou = iou[close_lines]
+	reg_offset = reg_offset[close_lines]
+	_cluster_lines = partial(_cluster_lines, proposed_lines, iou, reg_offset)
+
+	thetas = np.rad2deg(proposed_lines[:,1])
+	theta_v = thetas[np.logical_and(thetas > -30.0, thetas < 30.0)].mean()
+	theta_h = thetas[thetas > 30.0].mean()
+	is_v = (np.abs(thetas - theta_v) < 5.0)
+	is_h = (np.abs(thetas - theta_h) < 5.0)
+
+	pdb.set_trace()
+
+	cluster_lines = _cluster_lines(is_v) + _cluster_lines(is_h)
+	mask = lines.create_grid(sz, cluster_lines, width=10)
+	plt.imshow(mask)
+	plt.show()
+	return mask
 
 def _line_detection(x, kernel=np.ones((3,3), np.uint8), iterations=5):
 

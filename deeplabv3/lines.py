@@ -7,17 +7,17 @@ from scipy.signal import find_peaks
 import deeplabv3.vis as vis
 import math
 from scipy.spatial import distance
+from functools import partial
 
 class ROISampler:
 
-	def __init__(self, angle_step=5.0, rho_step=100, ROI_nlines=7, plot=False):
+	def __init__(self, angle_step=5.0, rho_step=50, ROI_nlines=7, plot=False):
 
 		self.angle_step = angle_step
 		self.rho_step = rho_step
 		self.plot = plot
-		self.ROI_width = rho_step / 4
+		self.ROI_width = rho_step / 2
 		self.ROI_nlines = ROI_nlines
-		self.ROI_rho_step = self.ROI_width / ROI_nlines
 
 	def __call__(self, angle_range, sz, npoints=50):
 
@@ -29,43 +29,46 @@ class ROISampler:
 			return coords
 
 		def sort_intersects(intersect_points):
-			pdb.set_trace()
 			axis = 1 if is_vertical else 0
 			intersect_points = sorted(intersect_points, key=lambda x: x[axis])
 			return intersect_points
 
 		def get_ROI_limits(rho, theta):
 
-			line_coeffs = general_form(rho, theta)
-			intersect_points = find_intesect_borders(line_coeffs, sz)
+			min_rho = rho - self.ROI_width / 2
+			max_rho = rho + self.ROI_width / 2
 
-			if intersect_points is not None:
-				intersect_points = sort_intersects(intersect_points)
-				limit1 = get_line_coeffs(intersect_points[0], theta + np.pi/2)
-				limit2 = get_line_coeffs(intersect_points[1], theta + np.pi/2)
-				return intersect_points, (limit1, limit2)
-			return None
+			line1 = general_form(min_rho, theta)
+			line2 = general_form(max_rho, theta)
 
-		def get_ROI_projection(line_coeffs, origins, limits):
+			return normal_form(*line1), normal_form(*line2)
+
+
+		def get_ROI_projection(line_coeffs, intersect_points, theta):
 
 			def _project(_limits, _origin):
+				_origin = np.array(_origin)
 				intersect = np.array(find_intersect(line_coeffs, _limits))
 				dist = np.sqrt(((intersect - _origin) ** 2).sum())
 				return dist / self.ROI_width
 
-			origins = np.array(origins)
-			projection1 = _project(limits[0], origins[0])
-			projection2 = _project(limits[1], origins[1])
+			limit1 = get_line_coeffs(intersect_points[0], theta + np.pi/2)
+			limit2 = get_line_coeffs(intersect_points[1], theta + np.pi/2)
 
-			if projection1 < 1.0 and projection2 < 1.0:
+			projection1 = _project(limit1, intersect_points[0])
+			projection2 = _project(limit2, intersect_points[1])
+
+			if np.abs(projection1) < 0.65 and np.abs(projection2) < 0.65:
 				return projection1, projection2
-			return return None
+			return None
 
 		def sample_ROI(rho, theta):
 
 			min_rho = rho - self.ROI_width / 2
-			max_rho = rho + self.ROI_width / 2 + self.ROI_rho_step
-			rhos = np.arange(min_rho, max_rho, self.ROI_rho_step)
+			max_rho = rho + self.ROI_width / 2
+			rhos = np.linspace(min_rho, max_rho, self.ROI_nlines)
+
+			print(len(rhos))
 
 			ROI_coords = []
 			for _rho in rhos.tolist():
@@ -112,24 +115,30 @@ class ROISampler:
 
 			return np.array(line_points).astype(np.float32)
 
+
+
 		max_distance = 2 * np.sqrt(sz[0] ** 2 + sz[1] ** 2)
-		rhos =  np.arange(-max_distance / 2.0, max_distance / 2.0 + self.rho_step, self.rho_step)
+		num_rhos = int(np.round(max_distance / self.rho_step))
+		rhos =  np.linspace(-max_distance / 2.0, max_distance / 2.0, num_rhos)
 		thetas = np.arange(angle_range[0], angle_range[1] + self.angle_step, self.angle_step)
 		thetas = np.deg2rad(thetas)
 
 		ROIs_projection = []
+		ROIs_limits = []
 		ROIs_coords = []
 		for _theta in thetas.tolist():
 			for _rho in rhos.tolist():
-				result = get_ROI_limits(_rho, _theta)
-				if result is not None:
+				central_line = general_form(_rho, _theta)
+				intersect_points = find_intesect_borders(central_line, sz)
+				if intersect_points is not None:
 					_ROI_coords = sample_ROI(_rho, _theta)
 					if len(_ROI_coords) == self.ROI_nlines:
-						intersect_points, limits = result
-						ROIs_projection.append(lambda x : get_ROI_projection(x, intersect_points, limits))
+						intersect_points = sort_intersects(intersect_points)
+						ROIs_projection.append(partial(get_ROI_projection, intersect_points=intersect_points, theta=_theta))
 						ROIs_coords.append(_ROI_coords)
+						ROIs_limits.append(get_ROI_limits(_rho, _theta))
 
-		return ROIs_projection, ROIs_coords
+		return ROIs_projection, ROIs_coords, ROIs_limits
 
 class LineSampler:
 
