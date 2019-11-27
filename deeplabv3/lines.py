@@ -142,14 +142,17 @@ class ROISampler:
 
 class LineSampler:
 
-	def __init__(self, angle_step=5.0, rho_step=100, plot=False):
+	def __init__(self, angle_step=5.0, rho_step=100, plot=False, min_len=300, ROI_W=35, w=7, h=70):
 
 		self.angle_step = angle_step
 		self.rho_step = rho_step
 		self.plot = plot
+		self.min_len = min_len
+		self.ROI_W = ROI_W
+		self.w = int(w)
+		self.h = int(h)
 
-
-	def __call__(self, angle_range, sz, npoints=50):
+	def __call__(self, angle_range, sz):
 
 
 		def norm_coords(coords):
@@ -157,35 +160,39 @@ class LineSampler:
 			coords[:, 1] = 2 * coords[:,1] / float(sz[0] - 1) - 1
 			return coords
 
-		def line_coords(intersect_points, orientation):
+		def line_coords(endpoints, orientation):
 
-			if self.plot:
-				fig, ax = plt.subplots(1)
-				ax.imshow(np.zeros(sz + (3,), dtype=np.uint8))
-				circle = plt.Circle(intersect_points[0], 5, color='b')
-				ax.add_patch(circle)
-				circle = plt.Circle(intersect_points[1], 5, color='b')
-				ax.add_patch(circle)
+			endpoints = np.array(endpoints)
+			line_len = distance.euclidean(endpoints[0], endpoints[1])
+			
+			if line_len < self.min_len:
+				return None
 
-			if self.plot:
-				fig, ax = plt.subplots(1)
-				ax.imshow(np.zeros(sz + (3,), dtype=np.uint8))
-
-			step_len = distance.euclidean(intersect_points[0], intersect_points[1]) / npoints
-			diff_vector = np.array(intersect_points[1]) - np.array(intersect_points[0])
+			diff_vector = endpoints[1] - endpoints[0]
 			unit_vector = diff_vector / np.sqrt((diff_vector ** 2).sum())
-			line_points = []
-			for i in np.arange(1, npoints):
-				line_point = np.array(intersect_points[0]) + i * step_len * unit_vector
-				line_points.append(line_point)
-				if self.plot:
-					circle = plt.Circle(tuple(line_point.tolist()), 2, color='b')
+			endpoints[0] +=  (line_len / 10) * unit_vector
+			endpoints[1] -=  (line_len / 10) * unit_vector
+	
+			line_len = distance.euclidean(endpoints[0], endpoints[1])
+			x = np.linspace(-1.0 * (self.ROI_W - 1) / 2, (self.ROI_W - 1) / 2, self.w)
+			y = np.linspace(-1.0 * (line_len-1) / 2, (line_len-1) / 2, self.h)
+			X, Y = np.meshgrid(x, y)
+			Xr = np.cos(orientation) * X + np.sin(orientation) * Y
+			Yr = np.sin(orientation) * X - np.cos(orientation) * Y
+			grid = (np.dstack((Xr, Yr)) + (endpoints[0] + endpoints[1]) / 2).astype(np.float32)
+
+			if self.plot:
+
+				fig, ax = plt.subplots(1)
+				ax.imshow(np.zeros(sz + (3,), dtype=np.uint8))
+
+				for _point in grid.reshape(-1,2).tolist():
+					circle = plt.Circle(tuple(_point), 1, color='b')
 					ax.add_patch(circle)
 
-			if self.plot:
 				plt.show()
 
-			return np.array(line_points).astype(np.float32)
+			return grid
 
 		max_distance = 2 * np.sqrt(sz[0] ** 2 + sz[1] ** 2)
 		rhos =  np.arange(-max_distance / 2.0, max_distance / 2.0 + self.rho_step, self.rho_step)
@@ -201,14 +208,13 @@ class LineSampler:
 				intersect_points = find_intesect_borders(line_coeffs, sz)
 				if intersect_points is not None:
 					line_points = line_coords(intersect_points, _theta)
-					line_points = norm_coords(line_points)
-					sampled_lines.append(line_points)
-					lines_coeffs.append(normal_form(*line_coeffs))
-					lines_intersects.append(intersect_points[0] + intersect_points[1])
+					if line_points is not None:
+						line_points = norm_coords(line_points)
+						sampled_lines.append(line_points)
+						lines_coeffs.append(normal_form(*line_coeffs))
+						lines_intersects.append(intersect_points[0] + intersect_points[1])
 
 		return sampled_lines, lines_coeffs, lines_intersects
-
-
 
 
 

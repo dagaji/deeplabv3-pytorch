@@ -480,7 +480,7 @@ class Deeplabv3PlusLines3(_Deeplabv3Plus):
 	def load_state_dict(self, state_dict, strict=True):
 		super(Deeplabv3PlusLines3, self).load_state_dict(state_dict, strict)
 		if 'line_clf.weight' not in state_dict:
-			pdb.set_trace()
+			# pdb.set_trace()
 			w0, w1 = self.classifier.weight.data[:2]
 			init_weight = (w1-w0).squeeze().unsqueeze(0)
 			self.line_clf.weight = nn.Parameter(init_weight)

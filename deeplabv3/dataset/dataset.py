@@ -116,7 +116,7 @@ class HistDataset(data.Dataset):
         self.rot_angles = np.arange(min_angle, max_angle + angle_step, angle_step)
         self.min_angle = min_angle
         self.max_angle = max_angle
-        self.line_sampler = lines.LineSampler(angle_step=5.0, rho_step=100)
+        self.line_sampler = lines.LineSampler(angle_step=5.0)
         self.max_offset = 45
         self.setup()
 
@@ -237,8 +237,8 @@ class HistDataset(data.Dataset):
             angle_range_v.sort()
             angle_range_h = angle_range_v + 90.0
 
-            sampled_points_v, proposed_lines_v, _ = self.line_sampler(angle_range_v, label_test.shape, npoints=100)
-            sampled_points_h, proposed_lines_h, _ = self.line_sampler(angle_range_h, label_test.shape, npoints=100)
+            sampled_points_v, proposed_lines_v, _ = self.line_sampler(angle_range_v, label_test.shape)
+            sampled_points_h, proposed_lines_h, _ = self.line_sampler(angle_range_h, label_test.shape)
 
             lines_gt_v, iou_gt_v, reg_gt_v = self.get_line_gt(true_lines_v, proposed_lines_v, label_test.shape)
             lines_gt_h, iou_gt_h, reg_gt_h = self.get_line_gt(true_lines_h, proposed_lines_h, label_test.shape)
@@ -249,6 +249,7 @@ class HistDataset(data.Dataset):
 
             proposed_lines = np.array(proposed_lines_v + proposed_lines_h, dtype=np.float32)
             sampled_points = np.stack(sampled_points_v + sampled_points_h)
+            pdb.set_trace()
 
             # aux_mask1 = lines.create_grid(label_test.shape, proposed_lines[iou_gt > 0.35].tolist())
             # aux_mask3 = lines.create_grid(label_test.shape, true_lines_v + true_lines_h)
