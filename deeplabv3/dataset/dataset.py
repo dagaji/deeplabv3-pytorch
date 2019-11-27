@@ -202,9 +202,6 @@ class HistDataset(data.Dataset):
                 iou_gt[idx] = iou
                 reg_gt[idx] = (proposed_lines[idx][0] - opt_line[0]) / self.max_offset
 
-        #         _plot_line(_true_mask, _create_mask(proposed_lines[idx], guard=False), _create_mask(opt_line, guard=False), iou)
-        # plt.show()
-
         return lines_gt, iou_gt, reg_gt
 
 
@@ -237,8 +234,8 @@ class HistDataset(data.Dataset):
             angle_range_v.sort()
             angle_range_h = angle_range_v + 90.0
 
-            sampled_points_v, proposed_lines_v, _ = self.line_sampler(angle_range_v, label_test.shape)
-            sampled_points_h, proposed_lines_h, _ = self.line_sampler(angle_range_h, label_test.shape)
+            proposed_lines_v, intersects_points_v = self.line_sampler(angle_range_v, label_test.shape)
+            proposed_lines_h, intersects_points_h = self.line_sampler(angle_range_h, label_test.shape)
 
             lines_gt_v, iou_gt_v, reg_gt_v = self.get_line_gt(true_lines_v, proposed_lines_v, label_test.shape)
             lines_gt_h, iou_gt_h, reg_gt_h = self.get_line_gt(true_lines_h, proposed_lines_h, label_test.shape)
@@ -246,19 +243,10 @@ class HistDataset(data.Dataset):
             lines_gt = np.append(lines_gt_v, lines_gt_h)
             iou_gt = np.append(iou_gt_v, iou_gt_h)
             reg_gt = np.append(reg_gt_v, reg_gt_h)
-
             proposed_lines = np.array(proposed_lines_v + proposed_lines_h, dtype=np.float32)
-            sampled_points = np.stack(sampled_points_v + sampled_points_h)
-            pdb.set_trace()
-
-            # aux_mask1 = lines.create_grid(label_test.shape, proposed_lines[iou_gt > 0.35].tolist())
-            # aux_mask3 = lines.create_grid(label_test.shape, true_lines_v + true_lines_h)
-            # aux_mask3[aux_mask1 == 1] = 2
-            # plt.figure()
-            # plt.imshow(aux_mask3)
-            # plt.show()
+            intersects_points = np.array(intersects_points_v + intersects_points_h, dtype=np.float32)
             
-        return dict(image_id=image_id, image=image, seg_label=seg_label, sampled_points=sampled_points, lines_gt=lines_gt, iou_gt=iou_gt, reg_gt=reg_gt)
+        return dict(image_id=image_id, image=image, seg_label=seg_label, intersects_points=intersects_points, lines_gt=lines_gt, iou_gt=iou_gt, reg_gt=reg_gt)
 
     def __len__(self):
         return len(self.id_list)
