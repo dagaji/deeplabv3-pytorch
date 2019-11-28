@@ -432,27 +432,27 @@ class Deeplabv3PlusLines3(_Deeplabv3Plus):
 											predict,
 											aux=False)
 	
-		self.reduce_net = nn.Sequential(nn.Conv2d(256, 64, kernel_size=3, padding=1, bias=False),
-			    						nn.GroupNorm(8, 64),
-			    						nn.ReLU())
-		self.reduce_net.apply(init_conv)
+		# self.reduce_net = nn.Sequential(nn.Conv2d(256, 64, kernel_size=3, padding=1, bias=False),
+		# 	    						nn.GroupNorm(8, 64),
+		# 	    						nn.ReLU())
+		# self.reduce_net.apply(init_conv)
 		
-		self.line_net = nn.Sequential(nn.Conv2d(64, 64, kernel_size=3, padding=0, bias=False),
-									  nn.GroupNorm(8, 64),
+		self.line_net = nn.Sequential(nn.Conv2d(256, 256, kernel_size=3, padding=0, groups=256, bias=False),
+									  nn.GroupNorm(256, 256),
 									  nn.ReLU(),
-									  nn.Conv2d(64, 64, kernel_size=3, padding=0, bias=False),
-									  nn.GroupNorm(8, 64),
+									  nn.Conv2d(256, 256, kernel_size=3, padding=0, groups=256, bias=False),
+									  nn.GroupNorm(256, 256),
 									  nn.ReLU())
 		self.line_net.apply(init_conv)
 
-		self.iou_clf = nn.Conv2d(64, 1, kernel_size=3, padding=0, bias=False)
+		self.iou_clf = nn.Conv2d(256, 1, kernel_size=3, padding=0, bias=False)
 		init_conv(self.iou_clf)
-		self.offset_reg = nn.Conv2d(64, 1, kernel_size=3, padding=0, bias=False)
+		self.offset_reg = nn.Conv2d(256, 1, kernel_size=3, padding=0, bias=False)
 		init_conv(self.offset_reg)
-		self.score_clf = nn.Conv2d(64, 1, kernel_size=1, padding=0, bias=False)
+		self.score_clf = nn.Conv2d(256, 1, kernel_size=1, padding=0, bias=False)
 		init_conv(self.score_clf)
 
-		self.avg_pooling = nn.AdaptiveAvgPool2d(7)
+		self.avg_pooling = nn.AdaptiveMaxPool2d(7)
 		self.max_pooling = nn.MaxPool2d(3)
 
 		angle_step = 15.0
@@ -468,20 +468,20 @@ class Deeplabv3PlusLines3(_Deeplabv3Plus):
 		self.line_sampler = lines.LineSampler(angle_step=1.0, rho_step=50)
 		self.ROI_sampler = lines.ROISampler()
 		
-	# def load_state_dict(self, state_dict, strict=True):
-	# 	super(Deeplabv3PlusLines3, self).load_state_dict(state_dict, strict)
-	# 	if 'line_clf.weight' not in state_dict:
-	# 		# pdb.set_trace()
-	# 		w0, w1 = self.classifier.weight.data[:2]
-	# 		init_weight = (w1-w0).squeeze().unsqueeze(0)
-	# 		self.line_clf.weight = nn.Parameter(init_weight)
+	def load_state_dict(self, state_dict, strict=True):
+		super(Deeplabv3PlusLines3, self).load_state_dict(state_dict, strict)
+		if 'score_clf.weight' not in state_dict:
+			print(">>>>>>>>>>")
+			w0, w1 = self.classifier.weight.data[:2]
+			init_weight = (w1-w0).view_as(self.score_clf.weight)
+			self.score_clf.weight = nn.Parameter(init_weight)
 
 	def get_device(self,):
 		return self.classifier.weight.device
 
 	def trainable_parameters(self,):
-		params = list(self.reduce_net.parameters())
-		params += list(self.line_net.parameters())
+		# params = list(self.reduce_net.parameters())
+		params = list(self.line_net.parameters())
 		params += list(self.iou_clf.parameters())
 		params += list(self.score_clf.parameters())
 		params += list(self.offset_reg.parameters())
@@ -542,7 +542,7 @@ class Deeplabv3PlusLines3(_Deeplabv3Plus):
 		x = inputs['image'].to(self.get_device())
 		input_shape = x.shape[-2:]
 		x_seg, x_features = self.extract_features(x)
-		x_features = self.reduce_net(x_features)
+		# x_features = self.reduce_net(x_features)
 		x_features_up = F.interpolate(x_features, size=input_shape, mode='bilinear', align_corners=False)
 
 		line_intersects = inputs['intersects_points'].cpu().numpy().squeeze()
