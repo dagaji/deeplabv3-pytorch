@@ -450,10 +450,10 @@ class Deeplabv3PlusLines3(_Deeplabv3Plus):
 		self.offset_reg = nn.Conv2d(256, 1, kernel_size=3, padding=0, bias=False)
 		init_conv(self.offset_reg)
 		self.score_clf = nn.Conv2d(256, 1, kernel_size=1, padding=0, bias=False)
-		init_conv(self.score_clf)
+		# init_conv(self.score_clf)
 
-		self.avg_pooling = nn.AdaptiveMaxPool2d(7)
-		self.max_pooling = nn.MaxPool2d(3)
+		self.avg_pooling = nn.AdaptiveAvgPool2d(7)
+		self.max_pooling = nn.MaxPool2d(7)
 
 		angle_step = 15.0
 		angles1 = np.deg2rad(np.arange(-30.0, 30.0 + angle_step, angle_step))
@@ -480,8 +480,9 @@ class Deeplabv3PlusLines3(_Deeplabv3Plus):
 		return self.classifier.weight.device
 
 	def trainable_parameters(self,):
-		# params = list(self.reduce_net.parameters())
-		params = list(self.line_net.parameters())
+		params = []
+		# params += list(self.reduce_net.parameters())
+		# params += list(self.line_net.parameters())
 		params += list(self.iou_clf.parameters())
 		params += list(self.score_clf.parameters())
 		params += list(self.offset_reg.parameters())
@@ -536,6 +537,21 @@ class Deeplabv3PlusLines3(_Deeplabv3Plus):
 
 		return x_seg, x_features
 
+	def debug(self, x_seg, grid):
+		x_seg = x_seg.transpose(0,1)[1].unsqueeze(0)
+		x_seg = torch.sigmoid(x_seg)
+		_line_features = F.grid_sample(x_seg, grid)
+		_line_features_1 = _line_features.cpu().detach().numpy().squeeze()
+		_line_features = self.avg_pooling(_line_features)
+		_line_features_2 = _line_features.cpu().detach().numpy().squeeze()
+		plt.figure()
+		plt.imshow(_line_features_1)
+		plt.figure()
+		plt.imshow(_line_features_2)
+		plt.show()
+
+
+
 
 	def forward(self, inputs):
 
@@ -563,9 +579,10 @@ class Deeplabv3PlusLines3(_Deeplabv3Plus):
 			grid = self.ROI_sampler(intersect_points, input_shape)
 			grid = torch.Tensor(grid).to(self.get_device())
 			grid = grid.unsqueeze(0)
+			# self.debug(x_seg, grid)
 			_line_features = F.grid_sample(x_features_up, grid)
 			_line_features = self.avg_pooling(_line_features)
-			_line_features = self.line_net(_line_features)
+			# _line_features = self.line_net(_line_features)
 			line_features.append(_line_features)
 
 		line_features = torch.cat(line_features, 0)

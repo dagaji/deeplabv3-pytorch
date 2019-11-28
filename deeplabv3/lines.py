@@ -11,7 +11,7 @@ from functools import partial
 
 class ROISampler:
 
-	def __init__(self, ROI_W=35, w=7, plot=False):
+	def __init__(self, ROI_W=70, w=15, plot=False):
 
 		self.ROI_W = ROI_W
 		self.w = int(w)
@@ -21,14 +21,13 @@ class ROISampler:
 	def __call__(self, endpoints, sz):
 
 		def norm_coords(coords):
-			coords[:, 0] = 2 * coords[:,0] / float(sz[1] - 1) - 1
-			coords[:, 1] = 2 * coords[:,1] / float(sz[0] - 1) - 1
+			coords[..., 0] = 2 * coords[..., 0] / float(sz[1] - 1) - 1
+			coords[..., 1] = 2 * coords[..., 1] / float(sz[0] - 1) - 1
 			return coords
 		
 		diff_vector = endpoints[1] - endpoints[0]
 		unit_vector = diff_vector / np.sqrt((diff_vector ** 2).sum())
 		orientation = np.arctan2(unit_vector[0], unit_vector[1])
-		# orientation = np.arcsin(unit_vector[1])
 
 		line_len = distance.euclidean(endpoints[0], endpoints[1])
 		endpoints[0] +=  (line_len / 10) * unit_vector
