@@ -107,7 +107,7 @@ class VideoDataset(data.Dataset):
 @register.attach('hist_dataset')
 class HistDataset(data.Dataset):
 
-    def __init__(self, root, id_list_path, angle_step=15.0, min_angle=-30.0, max_angle=30.0, augmentations=[]):
+    def __init__(self, root, id_list_path, angle_step=15.0, min_angle=-30.0, max_angle=30.0, augmentations=[], angle_step_sampler=5.0, rho_step_sampler=100, nlines=7):
         self.root = root
         self.id_list = np.loadtxt(id_list_path, dtype=str)
         self.mean = [0.485, 0.456, 0.406]
@@ -116,7 +116,9 @@ class HistDataset(data.Dataset):
         self.rot_angles = np.arange(min_angle, max_angle + angle_step, angle_step)
         self.min_angle = min_angle
         self.max_angle = max_angle
-        self.line_sampler = lines.LineSampler(angle_step=5.0)
+        self.line_sampler = lines.LineSampler(angle_step=angle_step_sampler, rho_step=rho_step_sampler)
+        self.nlines = nlines
+        self.sample_resol = rho_step_sampler / nlines
         self.max_offset = 45
         self.setup()
 
@@ -142,6 +144,13 @@ class HistDataset(data.Dataset):
 
     def get_line_gt(self, true_lines, proposed_lines, sz):
 
+        def _compute_iou(true_mask, proposed_mask):
+            not_ignored = np.logical_and(true_mask > 0, true_mask < 2)
+            hist = np.bincount(2 * true_mask[not_ignored].flatten() + proposed_mask[not_ignored].flatten(), minlength=4).reshape((2,2))
+            iou = np.diag(hist) / (hist.sum(axis=1) + hist.sum(axis=0) - np.diag(hist))
+            return iou[1]
+
+
         def _get_iou(true_lines, true_masks, proposed_line):
 
             opt_lines = []
@@ -156,11 +165,21 @@ class HistDataset(data.Dataset):
                 opt_rho = mid_point[0] * np.cos(proposed_theta) + mid_point[1] * np.sin(proposed_theta)
                 opt_line = (opt_rho, proposed_theta)
 
+                entropy = np.zeros(self.nlines, dtype=np.float32)
+                for i in np.arange(self.nlines):
+                    _rho = proposed_rho - self.sample_resol * (self.nlines - 1) / 2 + i * self.sample_resol
+                    proposed_mask = _create_mask((_rho, proposed_theta), guard=False, width=16)
+                    _iou = _compute_iou(true_masks[idx], proposed_mask)
+                    print(_iou)
+                    entropy[i] = _iou
+                entropy /= entropy.sum()
+
                 proposed_mask = _create_mask(opt_line, guard=False, width=16)
                 not_ignored = np.logical_and(true_masks[idx] > 0, true_masks[idx] < 2)
                 hist = np.bincount(2 * true_masks[idx][not_ignored].flatten() + proposed_mask[not_ignored].flatten(), minlength=4).reshape((2,2))
                 iou = (np.diag(hist) / (hist.sum(axis=1) + hist.sum(axis=0) - np.diag(hist)))[1]
-                
+                print(">> iou: {}".format(iou))
+                pdb.set_trace()
                 ious.append(iou)
                 opt_lines.append(opt_line)
 

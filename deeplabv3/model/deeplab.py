@@ -444,16 +444,17 @@ class Deeplabv3PlusLines3(_Deeplabv3Plus):
 									  nn.GroupNorm(256, 256),
 									  nn.ReLU())
 		self.line_net.apply(init_conv)
+		self.relu = nn.ReLU()
 
-		self.iou_clf = nn.Conv2d(256, 1, kernel_size=3, padding=0, bias=False)
+		self.iou_clf = nn.Conv2d(1, 1, kernel_size=(7,14), padding=0, bias=False)
 		init_conv(self.iou_clf)
-		self.offset_reg = nn.Conv2d(256, 1, kernel_size=3, padding=0, bias=False)
+		self.offset_reg = nn.Conv2d(1, 1, kernel_size=(7,14), padding=0, bias=False)
 		init_conv(self.offset_reg)
 		self.score_clf = nn.Conv2d(256, 1, kernel_size=1, padding=0, bias=False)
-		# init_conv(self.score_clf)
+		init_conv(self.score_clf)
 
-		self.avg_pooling = nn.AdaptiveAvgPool2d(7)
-		self.max_pooling = nn.MaxPool2d(7)
+		self.avg_pooling = nn.AdaptiveAvgPool2d((7, 14))
+		self.max_pooling = nn.AvgPool2d((7,14))
 
 		angle_step = 15.0
 		angles1 = np.deg2rad(np.arange(-30.0, 30.0 + angle_step, angle_step))
@@ -468,13 +469,13 @@ class Deeplabv3PlusLines3(_Deeplabv3Plus):
 		self.line_sampler = lines.LineSampler(angle_step=1.0, rho_step=50)
 		self.ROI_sampler = lines.ROISampler()
 		
-	def load_state_dict(self, state_dict, strict=True):
-		super(Deeplabv3PlusLines3, self).load_state_dict(state_dict, strict)
-		if 'score_clf.weight' not in state_dict:
-			print(">>>>>>>>>>")
-			w0, w1 = self.classifier.weight.data[:2]
-			init_weight = (w1-w0).view_as(self.score_clf.weight)
-			self.score_clf.weight = nn.Parameter(init_weight)
+	# def load_state_dict(self, state_dict, strict=True):
+	# 	super(Deeplabv3PlusLines3, self).load_state_dict(state_dict, strict)
+	# 	if 'score_clf.weight' not in state_dict:
+	# 		print(">>>>>>>>>>")
+	# 		w0, w1 = self.classifier.weight.data[:2]
+	# 		init_weight = (w1-w0).view_as(self.score_clf.weight)
+	# 		self.score_clf.weight = nn.Parameter(init_weight)
 
 	def get_device(self,):
 		return self.classifier.weight.device
@@ -582,12 +583,16 @@ class Deeplabv3PlusLines3(_Deeplabv3Plus):
 			# self.debug(x_seg, grid)
 			_line_features = F.grid_sample(x_features_up, grid)
 			_line_features = self.avg_pooling(_line_features)
+			_line_features = self.score_clf(_line_features)
 			# _line_features = self.line_net(_line_features)
 			line_features.append(_line_features)
 
 		line_features = torch.cat(line_features, 0)
 
-		score = self.score_clf(self.max_pooling(line_features)).squeeze().unsqueeze(0)
+		# pdb.set_trace()
+
+		score = self.max_pooling(line_features).squeeze().unsqueeze(0)
+		line_features = self.relu(line_features)
 		iou = self.iou_clf(line_features).squeeze().unsqueeze(0)
 		offset = self.offset_reg(line_features).squeeze().unsqueeze(0)
 
