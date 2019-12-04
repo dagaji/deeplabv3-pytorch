@@ -5,6 +5,26 @@ import numpy as np
 import pdb
 
 
+class AccuracyMeter(object):
+    def __init__(self,):
+        self.reset()
+
+    def reset(self,):
+        self.preds = []
+        self.labels = []
+
+    def add(self, preds, data):
+        labels = data['angle_range_label'].numpy().tolist()
+        for _pred, _label in zip(preds, labels):
+            _pred = np.argmax(_pred.cpu().numpy())
+            self.preds.append(_pred)
+            self.labels.append(_label)
+
+    def score(self,):
+        return np.mean(np.array(self.preds) == np.array(self.labels))
+
+
+
 class RunningScore(object):
     def __init__(self, n_classes):
         self.n_classes = n_classes

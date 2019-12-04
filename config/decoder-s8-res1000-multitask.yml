@@ -45,7 +45,7 @@ training:
             gamma: 0.9
 
     loss: 
-        name: 'line_detect'
+        name: 'line_detect_v2'
 
     # Model Configuration
     model:
@@ -58,7 +58,7 @@ training:
 validation:
 
     batch_size: 1
-    val_epochs: 1
+    val_epochs: 2
 
     val_expers:
 

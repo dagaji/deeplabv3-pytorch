@@ -1,5 +1,7 @@
 from .deeplab import *
+from .angle_detect import *
 from .predict import *
+from .angle_detect import *
 from .multi_frame import MultiFrameMerge
 import torch.nn as nn
 
@@ -8,6 +10,7 @@ models_map = {'deeplabv3' : Deeplabv3,
 			  'lines': Deeplabv3PlusLines,
 			  'lines2': Deeplabv3PlusLines2,
 			  'lines3': Deeplabv3PlusLines3,
+			  'angle': AngleDetect,
 			  }
 
 predict_map = {'argmax': argmax_predict,

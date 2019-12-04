@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
-import numpy as np
+import numpy as np; np.random.seed(0)
 import torchvision
 from deeplabv3.dataset import get_dataset
 from deeplabv3.model import get_model

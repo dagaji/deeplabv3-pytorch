@@ -9,9 +9,43 @@ import math
 from scipy.spatial import distance
 from functools import partial
 
+
+def sample_line(line_endpoints, sz, npoints=50):
+
+	def norm_coords(coords):
+		coords[..., 0] = 2 * coords[..., 0] / float(sz[1] - 1) - 1
+		coords[..., 1] = 2 * coords[..., 1] / float(sz[0] - 1) - 1
+		return coords
+		
+	grid_list = []
+	for endpoints in line_endpoints:
+
+		endpoints = np.array(endpoints)
+
+		diff_vector = endpoints[1] - endpoints[0]
+		unit_vector = diff_vector / np.sqrt((diff_vector ** 2).sum())
+		orientation = np.arctan2(unit_vector[0], unit_vector[1])
+
+		line_len = distance.euclidean(endpoints[0], endpoints[1])
+		endpoints[0] +=  (line_len / 10) * unit_vector
+		endpoints[1] -=  (line_len / 10) * unit_vector
+		line_len = distance.euclidean(endpoints[0], endpoints[1])
+
+		X = np.zeros(npoints, dtype=np.float32)
+		Y = np.linspace(-1.0 * (line_len - 1) / 2, (line_len - 1) / 2, npoints)
+
+		Xr = np.cos(orientation) * X + np.sin(orientation) * Y
+		Yr = -np.sin(orientation) * X + np.cos(orientation) * Y
+
+		grid = (np.dstack((Xr, Yr)) + (endpoints[0] + endpoints[1]) / 2).astype(np.float32)
+		grid_list.append(grid)
+
+	return norm_coords(np.concatenate(grid_list, axis=0))
+
+
 class ROISampler:
 
-	def __init__(self, ROI_W=70, w=15, plot=False):
+	def __init__(self, ROI_W=100, w=9, plot=False):
 
 		self.ROI_W = ROI_W
 		self.w = int(w)

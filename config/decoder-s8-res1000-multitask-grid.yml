@@ -3,27 +3,23 @@ num_classes: 4
 # Training Configuration
 training:
 
-    batch_size: 2
-    display_iters: 2
+    batch_size: 1
+    display_iters: 3
     iter_size: 5
 
     # Dataset Configuration
     dataset:
-        name: 'multitask'
+        name: 'angle_detect_dataset'
         params:
             root: '/home/davidgj/projects/APR_TAX_RWY'
             augmentations:
                 - pca:
                     sigma_pca: 0.05   
                 - random_flip:
-                - choice:
-                    - rotate:
-                        sigma_angle: 17.0
-                        w: 833
-                        h: 417
-                    - random_crop:
-                        w: 833
-                        h: 417
+                - rotate:
+                    sigma_angle: 17.0
+                    w: 833
+                    h: 417
 
     # LR Schedule Configuration
     scheduler:
@@ -33,12 +29,12 @@ training:
             decay_iter: 1
             gamma: 0.9
 
-    aux_loss: True
-    loss: 'multitask'
+    loss:
+        name: 'angle_range_loss'
 
     # Model Configuration
     model:
-        name: 'deeplabv3+1'
+        name: 'angle'
         stride: 8
             
 
@@ -51,15 +47,23 @@ validation:
     val_expers:
 
         - name: 'res1000_s8'
+          # Dataset Configuration
           dataset:
-            name: 'slim_dataset'
+            name: 'angle_detect_dataset'
             params:
                 root: '/home/davidgj/projects/APR_TAX_RWY'
-                train: False
+                augmentations:
+                    - pca:
+                        sigma_pca: 0.05   
+                    - random_flip:
+                    - rotate:
+                        sigma_angle: 17.0
+                        w: 833
+                        h: 417
+         # Model Configuration
           model:
-            name: 'deeplabv3+1'
+            name: 'angle'
             stride: 8
-            predict: 'line_dect'
 
         # - name: 'res1000_s8_video'
         #   dataset:

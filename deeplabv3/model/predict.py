@@ -89,13 +89,49 @@ def argmax_predict(x):
 
 def draw_lines(line_probs, data, line_coeffs):
 	# line_coeffs = data['line_coeffs'].cpu().numpy().squeeze()
+
+	def _cluster_lines(_lines, _is):
+
+		_lines = _lines[_is]
+
+		# pdb.set_trace()
+
+		ms = MeanShift(bandwidth=50.0)
+		pred = ms.fit_predict(_lines[:,0][...,np.newaxis])
+		cluster_labels = np.unique(pred)
+
+		cluster_lines = []
+		for _label in cluster_labels.tolist():
+			close_lines = _lines[pred == _label]
+			cluster_lines.append(close_lines.mean(0).tolist())
+
+		return cluster_lines
+
+
 	sz = data['image'].shape[-2:]
 	line_probs = line_probs.cpu().detach().numpy()
 	selected_lines = line_coeffs[line_probs > 0.5]
-	return lines.create_grid(sz, selected_lines.tolist())
+	pre_mask = lines.create_grid(sz, selected_lines.tolist())
+
 	# plt.figure()
-	# plt.imshow(mask)
+	# plt.imshow(pre_mask)
+
+	_cluster_lines = partial(_cluster_lines, selected_lines)
+	thetas = np.rad2deg(selected_lines[:,1])
+	theta_v = thetas[np.logical_and(thetas > -30.0, thetas < 30.0)].mean()
+	theta_h = thetas[thetas > 30.0].mean()
+	is_v = (np.abs(thetas - theta_v) < 5.0)
+	is_h = (np.abs(thetas - theta_h) < 5.0)
+	selected_lines = _cluster_lines(is_v) + _cluster_lines(is_h)
+
+	post_mask = lines.create_grid(sz, selected_lines)
+
+	# plt.figure()
+	# plt.imshow(post_mask)
 	# plt.show()
+
+	return pre_mask, post_mask
+
 
 def draw_lines2(line_intersect, scores, offset, data):
 

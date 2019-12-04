@@ -16,6 +16,7 @@ from collections import OrderedDict
 from deeplabv3.model.gabor import GaborConv2d, CoopConv2d
 import matplotlib.pyplot as plt
 import deeplabv3.lines as lines
+from deeplabv3.save import ResultsLogger
 
 class Deeplabv3(nn.Module):
 	pass
@@ -168,9 +169,8 @@ class Deeplabv3PlusLines(_Deeplabv3Plus):
 											aux=aux)
 
 		self.lines_clf = nn.Linear(256, 1, bias=False)
-		self.lines_clf.weight = None
 
-		angle_step = 15.0
+		angle_step = 7.5
 		angles1 = np.deg2rad(np.arange(-30.0, 30.0 + angle_step, angle_step))
 		self.angles_v = np.rad2deg(angles1)
 		angles2 = angles1 + np.pi/2
@@ -180,11 +180,12 @@ class Deeplabv3PlusLines(_Deeplabv3Plus):
 		for angle in angles:
 			self.filter_bank.append(GaborConv2d(angle))
 
-		self.line_sampler = lines.LineSampler()
+		self.line_sampler = lines.LineSampler(angle_step=2.5, rho_step=25)
+		self.results_logger = ResultsLogger('reunion/results_25_25')
 		
 	def load_state_dict(self, state_dict, strict=True):
 		super(Deeplabv3PlusLines, self).load_state_dict(state_dict, strict)
-		if self.lines_clf.weight is None:
+		if 'line_clf.weight' not in state_dict:
 			w0, w1 = self.classifier.weight.data[:2]
 			init_weight = (w1-w0).squeeze().unsqueeze(0)
 			self.lines_clf.weight = nn.Parameter(init_weight)
@@ -211,22 +212,22 @@ class Deeplabv3PlusLines(_Deeplabv3Plus):
 		res2 = res.transpose(0,1)[self.num_angles:].transpose(0,1)
 		res = (res1 + res2) * prob
 
-		for _res in res[0]:
-			plt.figure()
-			plt.imshow(_res.cpu().detach().numpy().squeeze(), vmax=1.0)
-		plt.show()
-
 		hist = res.view(bs, self.num_angles, -1).sum(2)
 		hist /= (hist.sum(1).unsqueeze(1).repeat([1, self.num_angles]) + 1.0)
-		print(hist)
-		hist = hist.cpu().numpy().squeeze()
-		angle_indices = np.argsort(hist)[-2:]
-		angle_range_v = self.angles_v[angle_indices]
-		angle_range_v.sort()
-		angle_range_h = angle_range_v + 90
 
-		return angle_range_v, angle_range_h
+		if self.training:
+			return hist
+		else: 
+			self.results_logger.save_hist(res, self.angles_v)
+			hist = hist.cpu().numpy().squeeze()
+			angle_indices = np.argsort(hist)[-2:]
+			angle_range_v = self.angles_v[angle_indices]
+			angle_range_v.sort()
+			angle_range_h = angle_range_v + 90
+			return angle_range_v, angle_range_h
 
+	def trainable_parameters(self,):
+		return super(Deeplabv3PlusLines, self).parameters()
 
 	def forward(self, inputs):
 
@@ -240,30 +241,38 @@ class Deeplabv3PlusLines(_Deeplabv3Plus):
 		x_features = F.interpolate(x, size=input_shape, mode='bilinear', align_corners=False)
 		x_seg = self.classifier(x_features)
 
-		angle_range_v, angle_range_h = self.compute_angle_range(x_seg)
-		print(">> {}".format(angle_range_v))
-		sampled_points_v, proposed_lines_v = self.line_sampler(angle_range_v, tuple(input_shape))
-		sampled_points_h, proposed_lines_h = self.line_sampler(angle_range_h, tuple(input_shape))
-
-		# pdb.set_trace()
-
-		proposed_lines = np.array(proposed_lines_v + proposed_lines_h, dtype=np.float32)
-		sampled_points = np.stack(sampled_points_v + sampled_points_h)[np.newaxis,...]
-		grid = torch.Tensor(sampled_points).to(self.get_device())
-
-		# grid = inputs['line_points'].to(self.get_device())
-		# proposed_lines = inputs['line_coeffs'].cpu().numpy().squeeze()
-		sampled_lines = F.grid_sample(x_features, grid)
-		line_features = sampled_lines.transpose(1,2).mean(3)
-		line_probs = torch.sigmoid(self.lines_clf(line_features)).squeeze()
-
 		if self.training:
+
+			hist = self.compute_angle_range(x_seg)
 			result = OrderedDict()
 			result["out"] = OrderedDict()
-			result["out"]["out"] = line_probs
+			result["out"]["hist"] = hist
+			return result
+			# result["out"]["score"] = line_probs
 		else:
-			#return self.predict(line_probs, inputs)
-			return self.predict(line_probs, inputs, proposed_lines)
+			angle_range_v, angle_range_h = self.compute_angle_range(x_seg)
+			# print(">> {}".format(angle_range_v))
+			proposed_lines_v, lines_intersects_v = self.line_sampler(angle_range_v, tuple(input_shape))
+			sampled_points_v = lines.sample_line(lines_intersects_v, input_shape)
+			
+			proposed_lines_h, lines_intersects_h = self.line_sampler(angle_range_h, tuple(input_shape))
+			sampled_points_h = lines.sample_line(lines_intersects_h, input_shape)
+			# pdb.set_trace()
+
+			proposed_lines = np.array(proposed_lines_v + proposed_lines_h, dtype=np.float32)
+			sampled_points = np.vstack((sampled_points_v, sampled_points_h))[np.newaxis,...]
+			grid = torch.Tensor(sampled_points).to(self.get_device())
+
+			# grid = inputs['line_points'].to(self.get_device())
+			# proposed_lines = inputs['line_coeffs'].cpu().numpy().squeeze()
+			sampled_lines = F.grid_sample(x_features, grid)
+			line_features = sampled_lines.transpose(1,2).mean(3)
+			line_probs = torch.sigmoid(self.lines_clf(line_features)).squeeze()
+			pre, post = self.predict(line_probs, inputs, proposed_lines)
+			self.results_logger.save_pre(inputs['image_id'], pre)
+			self.results_logger.save_post(inputs['image_id'], post)
+			return pre, post
+			
 
 
 class Deeplabv3PlusLines2(_Deeplabv3Plus):
@@ -425,7 +434,7 @@ class Deeplabv3PlusLines2(_Deeplabv3Plus):
 
 
 class Deeplabv3PlusLines3(_Deeplabv3Plus):
-	def __init__(self, n_classes, pretrained_model, predict, aux=False, out_planes_skip=48):
+	def __init__(self, n_classes, pretrained_model, predict, aux=False, out_planes_skip=48, nlines=7, rho_step_sampler=100):
 		super(Deeplabv3PlusLines3, self).__init__(n_classes, 
 											pretrained_model, 
 											DeepLabDecoder1(256, out_planes=out_planes_skip), 
@@ -439,22 +448,22 @@ class Deeplabv3PlusLines3(_Deeplabv3Plus):
 		
 		self.line_net = nn.Sequential(nn.Conv2d(256, 256, kernel_size=3, padding=0, groups=256, bias=False),
 									  nn.GroupNorm(256, 256),
-									  nn.ReLU(),
-									  nn.Conv2d(256, 256, kernel_size=3, padding=0, groups=256, bias=False),
-									  nn.GroupNorm(256, 256),
 									  nn.ReLU())
 		self.line_net.apply(init_conv)
-		self.relu = nn.ReLU()
 
-		self.iou_clf = nn.Conv2d(1, 1, kernel_size=(7,14), padding=0, bias=False)
-		init_conv(self.iou_clf)
-		self.offset_reg = nn.Conv2d(1, 1, kernel_size=(7,14), padding=0, bias=False)
-		init_conv(self.offset_reg)
+		# self.score_clf = nn.Conv2d(256, 1, kernel_size=1, padding=0, bias=False)
+		# init_conv(self.score_clf)
+
+		# self.iou_clf = nn.Conv2d(1, 1, kernel_size=(7,14), padding=0, bias=False)
+		# init_conv(self.iou_clf)
+		# self.offset_reg = nn.Conv2d(1, 1, kernel_size=(7,14), padding=0, bias=False)
+		# init_conv(self.offset_reg)
 		self.score_clf = nn.Conv2d(256, 1, kernel_size=1, padding=0, bias=False)
 		init_conv(self.score_clf)
 
-		self.avg_pooling = nn.AdaptiveAvgPool2d((7, 14))
-		self.max_pooling = nn.AvgPool2d((7,14))
+		w, h  = (nlines + 2), 2 * (nlines + 1)
+		self.avg_pooling = nn.AdaptiveAvgPool2d((h, w))
+		# self.max_pooling = nn.AvgPool2d((7,14))
 
 		angle_step = 15.0
 		angles1 = np.deg2rad(np.arange(-30.0, 30.0 + angle_step, angle_step))
@@ -466,8 +475,8 @@ class Deeplabv3PlusLines3(_Deeplabv3Plus):
 		for angle in angles:
 			self.filter_bank.append(GaborConv2d(angle))
 
-		self.line_sampler = lines.LineSampler(angle_step=1.0, rho_step=50)
-		self.ROI_sampler = lines.ROISampler()
+		self.line_sampler = lines.LineSampler(angle_step=1.0, rho_step=rho_step_sampler)
+		self.ROI_sampler = lines.ROISampler(ROI_W=rho_step_sampler, w=w)
 		
 	# def load_state_dict(self, state_dict, strict=True):
 	# 	super(Deeplabv3PlusLines3, self).load_state_dict(state_dict, strict)
@@ -483,10 +492,10 @@ class Deeplabv3PlusLines3(_Deeplabv3Plus):
 	def trainable_parameters(self,):
 		params = []
 		# params += list(self.reduce_net.parameters())
-		# params += list(self.line_net.parameters())
-		params += list(self.iou_clf.parameters())
+		params += list(self.line_net.parameters())
+		# params += list(self.iou_clf.parameters())
 		params += list(self.score_clf.parameters())
-		params += list(self.offset_reg.parameters())
+		# params += list(self.offset_reg.parameters())
 		return params
 
 	def compute_angle_range(self, x_seg):
@@ -536,7 +545,7 @@ class Deeplabv3PlusLines3(_Deeplabv3Plus):
 		x_features_up = F.interpolate(x_features, size=input_shape, mode='bilinear', align_corners=False)
 		x_seg = self.classifier(x_features_up)
 
-		return x_seg, x_features
+		return x_seg, x_features, x_features_up
 
 	def debug(self, x_seg, grid):
 		x_seg = x_seg.transpose(0,1)[1].unsqueeze(0)
@@ -558,9 +567,7 @@ class Deeplabv3PlusLines3(_Deeplabv3Plus):
 
 		x = inputs['image'].to(self.get_device())
 		input_shape = x.shape[-2:]
-		x_seg, x_features = self.extract_features(x)
-		# x_features = self.reduce_net(x_features)
-		x_features_up = F.interpolate(x_features, size=input_shape, mode='bilinear', align_corners=False)
+		x_seg, x_features, x_features_up = self.extract_features(x)
 
 		line_intersects = inputs['intersects_points'].cpu().numpy().squeeze()
 
@@ -580,28 +587,26 @@ class Deeplabv3PlusLines3(_Deeplabv3Plus):
 			grid = self.ROI_sampler(intersect_points, input_shape)
 			grid = torch.Tensor(grid).to(self.get_device())
 			grid = grid.unsqueeze(0)
-			# self.debug(x_seg, grid)
 			_line_features = F.grid_sample(x_features_up, grid)
 			_line_features = self.avg_pooling(_line_features)
+			_line_features = self.line_net(_line_features)
 			_line_features = self.score_clf(_line_features)
-			# _line_features = self.line_net(_line_features)
 			line_features.append(_line_features)
 
-		line_features = torch.cat(line_features, 0)
+		line_features = torch.cat(line_features, 0).squeeze(1)
+		score = line_features.mean(1).unsqueeze(0)
 
-		# pdb.set_trace()
-
-		score = self.max_pooling(line_features).squeeze().unsqueeze(0)
-		line_features = self.relu(line_features)
-		iou = self.iou_clf(line_features).squeeze().unsqueeze(0)
-		offset = self.offset_reg(line_features).squeeze().unsqueeze(0)
+		# score = self.max_pooling(line_features).squeeze().unsqueeze(0)
+		# line_features = self.relu(line_features)
+		# iou = self.iou_clf(line_features).squeeze().unsqueeze(0)
+		# offset = self.offset_reg(line_features).squeeze().unsqueeze(0)
 
 		if self.training:
 			result = OrderedDict()
 			result["out"] = OrderedDict()
 			result["out"]["score"] = score
-			result["out"]["offset"] = offset
-			result["out"]["iou"] = iou
+			# result["out"]["offset"] = offset
+			# result["out"]["iou"] = iou
 			return result
 		else:
 			proposed_lines = np.array(proposed_lines_v + proposed_lines_h, dtype=np.float32)

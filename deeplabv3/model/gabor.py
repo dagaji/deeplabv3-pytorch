@@ -14,6 +14,22 @@ import pdb
 from scipy.ndimage import gaussian_filter
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
+
+def gabor(sigma, theta, Lambda, psi, gamma, kernel_size):
+    """Gabor feature extraction."""
+    sigma_x = sigma
+    sigma_y = float(sigma) / gamma
+
+
+    y, x = np.meshgrid(np.linspace(-0.5, 0.5, kernel_size), np.linspace(-0.5, 0.5, kernel_size))
+
+    # Rotation
+    x_theta = x * np.cos(theta) + y * np.sin(theta)
+    y_theta = -x * np.sin(theta) + y * np.cos(theta)
+
+    gb = np.exp(-.5 * (x_theta ** 2 / sigma_x ** 2 + y_theta ** 2 / sigma_y ** 2)) * np.cos(2 * np.pi / Lambda * x_theta + psi)
+    return gb
+
 class GaborConv2d(_ConvNd):
 
 
@@ -125,6 +141,25 @@ class CoopConv2d(_ConvNd):
 	def plot_filter(self):
 		plt.figure()
 		plt.imshow(self._weight.cpu().detach().numpy().squeeze())
+
+if __name__ == "__main__":
+
+	theta = np.deg2rad(-30.0)
+	sigma = 0.075
+	gamma = sigma / 0.75
+	kernel_size = 201
+	psi = 0
+
+	for Lambda in np.linspace(0.15, 0.20, 5).tolist():
+		gf = gabor(sigma, theta, Lambda, psi, gamma, kernel_size)
+		plt.figure()
+		plt.imshow(gf)
+		plt.title("Lambda={}; mean={}".format(Lambda, gf.mean()))
+	plt.show()
+
+
+
+
 
 
 

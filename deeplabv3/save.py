@@ -14,6 +14,48 @@ def makedir(_dir):
 	if not os.path.exists(_dir):
 		os.makedirs(_dir)
 
+
+class ResultsLogger:
+	def __init__(self, save_dir):
+
+		self.histogram_dir = os.path.join(save_dir, 'hist')
+		self.vis_pre_dir = os.path.join(save_dir, 'pre-NMS')
+		self.vis_post_dir = os.path.join(save_dir, 'post-NMS')
+		self.saved_hist = False
+		self.img_idx = 0
+		self.root = '/home/davidgj/projects/APR_TAX_RWY/images'
+		self.palette = make_palette(4)
+
+		makedir(self.histogram_dir)
+		makedir(self.vis_pre_dir)
+		makedir(self.vis_post_dir)
+
+	def save_hist(self, res, angles):
+
+		if not self.saved_hist:
+			for idx, _res in enumerate(res[0]):
+				fig = plt.figure()
+				save_path = os.path.join(self.histogram_dir, "angle_{}.png".format(angles[idx]))
+				plt.imshow(_res.cpu().detach().numpy().squeeze(), vmax=1.0)
+				fig.savefig(save_path)
+			self.saved_hist = True
+
+	def save_vis(self, img_id, mask, save_dir):
+		img_id = img_id[0]
+		img_path = os.path.join(self.root, img_id)
+		img = cv2.imread(img_path)
+		vis_img = vis_seg(img, np.squeeze(mask), self.palette)
+		save_path = os.path.join(save_dir, "frame_{}.png".format(self.img_idx))
+		cv2.imwrite(save_path, vis_img)
+
+	def save_pre(self, img_id, mask):
+		self.save_vis(img_id, mask, self.vis_pre_dir)
+
+	def save_post(self, img_id, mask):
+		self.save_vis(img_id, mask, self.vis_post_dir)
+		self.img_idx += 1
+
+
 class ResultsSaverFactory:
 	def __init__(self, n_classes, save_dir, current_epoch):
 		self.n_classes = n_classes

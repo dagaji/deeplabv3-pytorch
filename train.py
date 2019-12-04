@@ -67,3 +67,4 @@ def train(train_model, train_dataloader, criterion, optimizer, scheduler, device
 				running_loss.reset()
 				for idx, param_group in enumerate(optimizer.param_groups):
 					print('Param Group {}: {}'.format(idx, param_group['lr']))
+				# train_model.gabor_bank.plot_filters()

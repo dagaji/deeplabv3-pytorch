@@ -136,65 +136,129 @@ def line_detect_loss(inputs, data):
 
 	return score_loss + l1_loss + iou_loss
 
+
+@register.attach('line_detect_v2')
+def line_detect_loss_v2(inputs, data):
+
+	score = inputs["score"]
+	device = score.device
+	log_prob = F.log_softmax(score, dim=2)
+
+	line_gt = data['lines_gt'].to(device)
+	entropy_gt = data['entropy_gt'].to(device)
+
+	max_score, _ = score.max(2)
+	score_loss = F.binary_cross_entropy_with_logits(max_score, line_gt)
+	entropy_loss = -1.0 * ((log_prob * entropy_gt).sum(2) * line_gt).sum(1) / line_gt.sum(1)
+
+	return score_loss + entropy_loss
+
 @register.attach('hist_loss')
-class HistLoss:
+def _hist_loss(inputs, data):
 
-	def __init__(self, angle_step, max_angle=45, min_angle=-45, hist_weight=0.4, plot_filters=True):
+	hist = inputs["hist"]
+	device = hist.device
+	hist_gt = data['angle_range_gt'].to(device)
+	log_hist = torch.log(hist)
+	# pdb.set_trace()
+	hist_loss = -1.0 * ((log_hist * hist_gt).sum(1)).mean()
+	# pdb.set_trace()
+	return hist_loss
 
-		angles = np.deg2rad(np.arange(min_angle, max_angle, angle_step))
-		self.num_angles = len(angles)
-		self.filter_bank = []
-		for angle in angles:
-			self.filter_bank.append(GaborConv2d(angle))
-			if plot_filters:
-				self.filter_bank[-1].plot_filter()
-		if plot_filters:
-			plt.show()
+@register.attach('hist_loss')
+def _hist_loss(inputs, data):
 
-		self.hist_weight = hist_weight
+	hist = inputs["hist"]
+	device = hist.device
+	hist_gt = data['angle_range_gt'].to(device)
+	log_hist = torch.log(hist)
+	# pdb.set_trace()
+	hist_loss = -1.0 * ((log_hist * hist_gt).sum(1)).mean()
+	# pdb.set_trace()
+	return hist_loss
 
-	def __call__(self, inputs, data):
+@register.attach('angle_range_loss')
+def angle_range_loss(inputs, data):
+	margin = 0.1
+	angle_ranges = inputs["angle_ranges"]
+	n_ranges = angle_ranges.shape[1]
+	device = angle_ranges.device
+	angle_range_label = data['angle_range_label'].to(device)
+	margin_loss = []
+	for prob, idx in zip(angle_ranges, angle_range_label):
+		dist = prob[idx] - prob
+		dist = torch.clamp(margin - dist, min=0.0, max=1.0)
+		one_hot = F.one_hot(idx, n_ranges).float()
+		margin_loss.append((dist * (1 - one_hot)).max())
+	margin_loss = sum(margin_loss) / len(margin_loss)
 
-		pred = inputs['out']
-		bs = pred.shape[0]
-		device = pred.device
-		seg_label = data['seg_label'].to(device)
-		hist_mask = data['hist_mask'].to(device).unsqueeze(1)
-		pred_1 = pred.transpose(0,1)[1].unsqueeze(1) * hist_mask
-		angle_gt = data['angle_gt'].to(device)
+	# cross_entropy_loss = F.nll_loss(torch.log(angle_ranges), angle_range_label)
+	# # print(">> cross_entropy_loss: {}".format(0.01 * cross_entropy_loss))
 
-		res = []
-		for gabor_filter in self.filter_bank:
-			res.append(gabor_filter(pred_1))
+	# total_loss = margin_loss + 0.0001 * cross_entropy_loss
 
-		res = F.relu(torch.cat(res, dim=1))
-		hist = res.view(bs, self.num_angles, -1).sum(2)
-		hist /= (hist.sum(1).unsqueeze(1).repeat([1, self.num_angles]) + 1.0)
+	return margin_loss
 
-		hist_loss = []
-		for _angle_gt, _hist, _res in zip(angle_gt, hist, res):
-			if bool(_angle_gt.sum() > 0):
-				# print(np.where(_angle_gt.cpu().numpy()))
-				# print((_hist * _angle_gt).sum())
-				# for i in np.arange(len(_angle_gt)):
-				# 	plt.figure()
-				# 	plt.imshow(_res[i].cpu().detach().numpy().squeeze())
-				# plt.show()
-				_hist_loss = (_hist * _angle_gt).sum()
-				hist_loss.append(-1.0 * torch.log(_hist_loss))
 
-		hist_loss = sum(hist_loss) / max(len(hist_loss), 1)
-		seg_loss = F.cross_entropy(pred, seg_label, ignore_index=255)
+# @register.attach('hist_loss')
+# class HistLoss:
 
-		print("hist_loss: {}".format(hist_loss))
-		print("seg_loss: {}".format(seg_loss))
+# 	def __init__(self, angle_step, max_angle=45, min_angle=-45, hist_weight=0.4, plot_filters=True):
 
-		if hist_loss > 10.0:
-			pdb.set_trace()
+# 		angles = np.deg2rad(np.arange(min_angle, max_angle, angle_step))
+# 		self.num_angles = len(angles)
+# 		self.filter_bank = []
+# 		for angle in angles:
+# 			self.filter_bank.append(GaborConv2d(angle))
+# 			if plot_filters:
+# 				self.filter_bank[-1].plot_filter()
+# 		if plot_filters:
+# 			plt.show()
 
-		# print("hist_loss: {}".format(hist_loss.item()))
+# 		self.hist_weight = hist_weight
 
-		return seg_loss + self.hist_weight * hist_loss
+# 	def __call__(self, inputs, data):
+
+# 		pred = inputs['out']
+# 		bs = pred.shape[0]
+# 		device = pred.device
+# 		seg_label = data['seg_label'].to(device)
+# 		hist_mask = data['hist_mask'].to(device).unsqueeze(1)
+# 		pred_1 = pred.transpose(0,1)[1].unsqueeze(1) * hist_mask
+# 		angle_gt = data['angle_gt'].to(device)
+
+# 		res = []
+# 		for gabor_filter in self.filter_bank:
+# 			res.append(gabor_filter(pred_1))
+
+# 		res = F.relu(torch.cat(res, dim=1))
+# 		hist = res.view(bs, self.num_angles, -1).sum(2)
+# 		hist /= (hist.sum(1).unsqueeze(1).repeat([1, self.num_angles]) + 1.0)
+
+# 		hist_loss = []
+# 		for _angle_gt, _hist, _res in zip(angle_gt, hist, res):
+# 			if bool(_angle_gt.sum() > 0):
+# 				# print(np.where(_angle_gt.cpu().numpy()))
+# 				# print((_hist * _angle_gt).sum())
+# 				# for i in np.arange(len(_angle_gt)):
+# 				# 	plt.figure()
+# 				# 	plt.imshow(_res[i].cpu().detach().numpy().squeeze())
+# 				# plt.show()
+# 				_hist_loss = (_hist * _angle_gt).sum()
+# 				hist_loss.append(-1.0 * torch.log(_hist_loss))
+
+# 		hist_loss = sum(hist_loss) / max(len(hist_loss), 1)
+# 		seg_loss = F.cross_entropy(pred, seg_label, ignore_index=255)
+
+# 		print("hist_loss: {}".format(hist_loss))
+# 		print("seg_loss: {}".format(seg_loss))
+
+# 		if hist_loss > 10.0:
+# 			pdb.set_trace()
+
+# 		# print("hist_loss: {}".format(hist_loss.item()))
+
+# 		return seg_loss + self.hist_weight * hist_loss
 
 
 
