@@ -1,0 +1,92 @@
+
+# Training Configuration
+training:
+
+    batch_size: 2
+    display_iters: 3
+    iter_size: 5
+
+    # Dataset Configuration
+    dataset:
+        name: 'angle_detect_dataset'
+        params:
+            root: '/home/davidgj/projects/APR_TAX_RWY'
+            augmentations:
+                - pca:
+                    sigma_pca: 0.05   
+                - random_flip:
+                - rotate:
+                    sigma_angle: 17.0
+                    w: 833
+                    h: 417
+    # Model Configuration
+    model:
+        name: 'angle_detect'
+        stride: 8
+        predict: 'line_dect'
+
+    # LR Schedule Configuration
+    scheduler:
+        name: 'poly_lr'
+        params:
+            max_iter: 50000
+            decay_iter: 1
+            gamma: 0.9
+
+    loss:
+        name: 'angle_range_loss_v3'
+
+    aux_loss: False
+            
+
+# Validation Configuration
+validation:
+
+    batch_size: 1
+    val_epochs: 4
+
+    val_expers:
+
+        # - name: 'segmentation'
+        #   # Dataset Configuration
+        #   dataset:
+
+        #     # name: 'slim_dataset'
+        #     # params:
+        #     #     root: '/home/davidgj/projects/APR_TAX_RWY'
+
+        #     name: 'base_dataset'
+        #     params:
+        #         root: '/home/davidgj/projects/APR_TAX_RWY'
+        #         augmentations:
+        #             - pca:
+        #                 sigma_pca: 0.05   
+        #             - random_flip:
+        #             - rotate:
+        #                 sigma_angle: 17.0
+        #                 w: 833
+        #                 h: 417
+        #  # Model Configuration
+        #   model:
+        #     name: 'deeplabv3+1'
+        #     stride: 8
+
+        - name: 'line_detect'
+          # Dataset Configuration
+          dataset:
+            name: 'angle_detect_dataset'
+            params:
+                root: '/home/davidgj/projects/APR_TAX_RWY'
+                augmentations:
+                    - pca:
+                        sigma_pca: 0.05   
+                    - random_flip:
+                    - rotate:
+                        sigma_angle: 17.0
+                        w: 833
+                        h: 417
+         # Model Configuration
+          model:
+            name: 'angle_detect'
+            stride: 8
+            predict: 'line_dect'

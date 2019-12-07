@@ -17,6 +17,17 @@ import torch
 # 			od[key] = value
 # 	return od
 
+def get_cfgs_v2(config_path):
+
+	with open(config_path, 'r') as stream:
+	    try:
+	    	config = yaml.safe_load(stream)
+	    	return config
+	    except yaml.YAMLError as exc:
+	        print(exc)
+	return None
+
+
 def get_cfgs(config_path):
 
 	exper_name = os.path.basename(config_path).split('.')[0]

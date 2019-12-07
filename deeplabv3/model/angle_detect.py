@@ -77,7 +77,6 @@ class AngleDetect(_Deeplabv3Plus):
 											predict,
 											aux=aux)
 		self.reduce = nn.Sequential(nn.Conv2d(256, 1, kernel_size=1, stride=1, bias=False))
-		# self.reduce.__call__ = check_gradient('REDUCE_OUPUT')(self.reduce)
 
 		self.relu = nn.ReLU()
 

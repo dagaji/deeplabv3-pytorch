@@ -71,8 +71,10 @@ class AngleDetectDataset(data.Dataset):
 
         angle_range_label = 255
         if np.any(label_test == 1):
-            _, angles_v, dists_v = lines.search_lines((label_test == 1), (self.min_angle, self.max_angle), npoints=1000, min_distance=100, min_angle=300, threshold=None)
-            _rot_angle = -np.rad2deg(angles_v).mean()
+            # _, angles_v, dists_v = lines.search_lines((label_test == 1), (self.min_angle, self.max_angle), npoints=1000, min_distance=100, min_angle=300, threshold=None)
+            # _rot_angle = -np.rad2deg(angles_v).mean()
+            _, _rot_angle = lines.extract_lines((label_test == 1), (self.min_angle, self.max_angle))
+            _rot_angle = np.rad2deg(_rot_angle)
             angle_dist = np.abs(self.rot_angles - _rot_angle)
             angle_range_label = np.argsort(angle_dist)[:2].min()
             
@@ -86,16 +88,13 @@ class AngleDetectDataset(data.Dataset):
         fmt_str += "    Root: {}".format(self.root)
         return fmt_str
 
+
 @register.attach('angle_detect_dataset_multitask')
 class AngleDetectDatasetMultitask(data.Dataset):
 
     def __init__(self, **kwargs):
         self.theta_step = kwargs.pop('theta_step')
         self.rho_step = kwargs.pop('rho_step')
-        self.npoints = kwargs.pop('npoints')
-        self.line_sampler = lines.LineSampler(angle_step=self.theta_step, rho_step=self.rho_step)
-        self.group_size = kwargs.pop('group_size')
-        self.ngroups = int((self.npoints - self.group_size) / self.group_size) + 1
         super(AngleDetectDatasetMultitask, self).__init__(**kwargs)
 
     def get_line_gt(self, true_lines, proposed_lines, sz):
@@ -116,27 +115,29 @@ class AngleDetectDatasetMultitask(data.Dataset):
 
         data = super(AngleDetectDatasetMultitask, self).__getitem__(index)
         label_test = data['label_test']
+        label = data['label']
         idx = data['label_test']
-        sampled_points = np.zeros((self.ngroups, self.group_size, 2), dtype=np.float32)
-        groups_gt = np.zeros(self.ngroups, dtype=np.float32)
         
         if idx != 255:
 
             angle_range_v = np.deg2rad((self.angles_v[idx], self.angles_v[idx+1]))
             angle_range_h = angle_range_v + np.pi/2
-
-            lines_coeffs_v, line_endpoints_v = self.line_sampler(angle_range_v, sz)
-            sampled_points_v = lines.sample_line(line_endpoints_v, sz)
-
-            lines_coeffs_h, line_endpoints_h = self.line_sampler(angle_range_h, sz)
-            sampled_points_h = lines.sample_line(line_endpoints_h, sz)
-
-            proposed_lines = np.array(lines_coeffs_v + lines_coeffs_h, dtype=np.float32)
-            sampled_points = np.vstack((sampled_points_v, sampled_points_h))[np.newaxis,...]
-
-            _, angles_v, dists_v = lines.search_lines((label_test == 1), (self.min_angle, self.max_angle), npoints=1000, min_distance=100, min_angle=300, threshold=None)
+            sz = label_test.shape
             
-            data.update(sampled_points=sampled_points, groups_gt=groups_gt)
+            proposed_lines_v, line_endpoints_v = lines.get_line_proposals(angle_range_v, sz, angle_step=self.angle_step, rho_step=self.rho_step)
+            true_lines_v, _ = lines.extract_lines((label_test == 1), (self.min_angle, self.max_angle))
+            lines_gt_v = self.get_line_gt(true_lines_v, proposed_lines_v, sz)
+
+            proposed_lines_h, line_endpoints_h = lines.get_line_proposals(angle_range_h, sz, angle_step=self.angle_step, rho_step=self.rho_step)
+            true_lines_h, _ = lines.extract_lines((label_test == 1), (self.min_angle + 90.0, self.max_angle + 90.0))
+            lines_gt_h = self.get_line_gt(true_lines_h, proposed_lines_h, sz)
+
+            proposed_lines_endpoints = np.vstack((line_endpoints_v, line_endpoints_h), dtype=np.float32)
+            lines_gt = np.append(lines_gt_v, lines_gt_h)
+
+        label[(label != 255)] = np.clip(label[(label != 255)] - 1, a_min=0)
+
+        data.update(proposed_lines_endpoints=proposed_lines_endpoints, lines_gt=lines_gt, label=label)
 
         return data
 

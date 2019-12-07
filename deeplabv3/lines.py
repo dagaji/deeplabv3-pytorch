@@ -10,17 +10,96 @@ from scipy.spatial import distance
 from functools import partial
 
 
-def sample_line(line_endpoints, sz, npoints=50):
+# def sample_line(line_endpoints, sz, npoints=50):
+
+# 	def norm_coords(coords):
+# 		coords[..., 0] = 2 * coords[..., 0] / float(sz[1] - 1) - 1
+# 		coords[..., 1] = 2 * coords[..., 1] / float(sz[0] - 1) - 1
+# 		return coords
+		
+# 	grid_list = []
+# 	for endpoints in line_endpoints:
+
+# 		endpoints = np.array(endpoints)
+
+# 		diff_vector = endpoints[1] - endpoints[0]
+# 		unit_vector = diff_vector / np.sqrt((diff_vector ** 2).sum())
+# 		orientation = np.arctan2(unit_vector[0], unit_vector[1])
+
+# 		line_len = distance.euclidean(endpoints[0], endpoints[1])
+# 		endpoints[0] +=  (line_len / 10) * unit_vector
+# 		endpoints[1] -=  (line_len / 10) * unit_vector
+# 		line_len = distance.euclidean(endpoints[0], endpoints[1])
+
+# 		X = np.zeros(npoints, dtype=np.float32)
+# 		Y = np.linspace(-1.0 * (line_len - 1) / 2, (line_len - 1) / 2, npoints)
+
+# 		Xr = np.cos(orientation) * X + np.sin(orientation) * Y
+# 		Yr = -np.sin(orientation) * X + np.cos(orientation) * Y
+
+# 		grid = (np.dstack((Xr, Yr)) + (endpoints[0] + endpoints[1]) / 2).astype(np.float32)
+# 		grid_list.append(grid)
+
+# 	return norm_coords(np.concatenate(grid_list, axis=0))
+
+
+# class ROISampler:
+
+# 	def __init__(self, ROI_W=100, w=9, plot=False):
+
+# 		self.ROI_W = ROI_W
+# 		self.w = int(w)
+# 		self.resol = self.ROI_W / w
+# 		self.plot = plot
+
+# 	def __call__(self, endpoints, sz):
+
+# 		def norm_coords(coords):
+# 			coords[..., 0] = 2 * coords[..., 0] / float(sz[1] - 1) - 1
+# 			coords[..., 1] = 2 * coords[..., 1] / float(sz[0] - 1) - 1
+# 			return coords
+		
+# 		diff_vector = endpoints[1] - endpoints[0]
+# 		unit_vector = diff_vector / np.sqrt((diff_vector ** 2).sum())
+# 		orientation = np.arctan2(unit_vector[0], unit_vector[1])
+
+# 		line_len = distance.euclidean(endpoints[0], endpoints[1])
+# 		endpoints[0] +=  (line_len / 10) * unit_vector
+# 		endpoints[1] -=  (line_len / 10) * unit_vector
+# 		line_len = distance.euclidean(endpoints[0], endpoints[1])
+
+# 		x = np.linspace(-1.0 * (self.ROI_W - 1) / 2, (self.ROI_W - 1) / 2, self.w)
+# 		y = np.linspace(-1.0 * (line_len - 1) / 2, (line_len - 1) / 2, int(line_len / self.resol))
+# 		X, Y = np.meshgrid(x, y)
+# 		Xr = np.cos(orientation) * X + np.sin(orientation) * Y
+# 		Yr = -np.sin(orientation) * X + np.cos(orientation) * Y
+# 		grid = (np.dstack((Xr, Yr)) + (endpoints[0] + endpoints[1]) / 2).astype(np.float32)
+
+
+# 		if self.plot:
+
+# 			fig, ax = plt.subplots(1)
+# 			ax.imshow(np.zeros(sz + (3,), dtype=np.uint8))
+
+# 			for _point in grid.reshape(-1,2).tolist():
+# 				circle = plt.Circle(tuple(_point), 1, color='b')
+# 				ax.add_patch(circle)
+
+# 			circle = plt.Circle(tuple(endpoints[0].tolist()), 10, color='b')
+# 			ax.add_patch(circle)
+# 			circle = plt.Circle(tuple(endpoints[1].tolist()), 10, color='b')
+# 			ax.add_patch(circle)
+
+# 			plt.show()
+
+# 		return norm_coords(grid)
+
+def sample_line(endpoints, sz, resol):
 
 	def norm_coords(coords):
 		coords[..., 0] = 2 * coords[..., 0] / float(sz[1] - 1) - 1
 		coords[..., 1] = 2 * coords[..., 1] / float(sz[0] - 1) - 1
 		return coords
-		
-	grid_list = []
-	for endpoints in line_endpoints:
-
-		endpoints = np.array(endpoints)
 
 		diff_vector = endpoints[1] - endpoints[0]
 		unit_vector = diff_vector / np.sqrt((diff_vector ** 2).sum())
@@ -30,6 +109,7 @@ def sample_line(line_endpoints, sz, npoints=50):
 		endpoints[0] +=  (line_len / 10) * unit_vector
 		endpoints[1] -=  (line_len / 10) * unit_vector
 		line_len = distance.euclidean(endpoints[0], endpoints[1])
+		npoints = int(line_len / resol)
 
 		X = np.zeros(npoints, dtype=np.float32)
 		Y = np.linspace(-1.0 * (line_len - 1) / 2, (line_len - 1) / 2, npoints)
@@ -43,93 +123,114 @@ def sample_line(line_endpoints, sz, npoints=50):
 	return norm_coords(np.concatenate(grid_list, axis=0))
 
 
-class ROISampler:
+def get_line_proposals(angle_range, sz, angle_step=5.0, rho_step=100, plot=False, min_len=300):
 
-	def __init__(self, ROI_W=100, w=9, plot=False):
+	max_distance = 2 * np.sqrt(sz[0] ** 2 + sz[1] ** 2)
+	rhos =  np.arange(-max_distance / 2.0, max_distance / 2.0 + rho_step, rho_step)
+	thetas = np.arange(angle_range[0], angle_range[1] + angle_step, angle_step)
+	thetas = np.deg2rad(thetas)
 
-		self.ROI_W = ROI_W
-		self.w = int(w)
-		self.resol = self.ROI_W / w
-		self.plot = plot
+	lines_coeffs = []
+	lines_intersects = []
+	for _theta in thetas.tolist():
+		for _rho in rhos.tolist():
+			line_coeffs = general_form(_rho, _theta)
+			intersect_points = find_intesect_borders(line_coeffs, sz)
+			if intersect_points is not None:
+				intersect_points = np.array(intersect_points)
+				line_len = distance.euclidean(intersect_points[0], intersect_points[1])
+				if line_len >= min_len: 
+					lines_coeffs.append(normal_form(*line_coeffs))
+					lines_intersects.append(intersect_points.tolist())
 
-	def __call__(self, endpoints, sz):
+	if plot:
+		plt.figure()
+		plt.imshow(create_grid(sz, lines_coeffs))
+		plt.show()
 
-		def norm_coords(coords):
-			coords[..., 0] = 2 * coords[..., 0] / float(sz[1] - 1) - 1
-			coords[..., 1] = 2 * coords[..., 1] / float(sz[0] - 1) - 1
-			return coords
-		
-		diff_vector = endpoints[1] - endpoints[0]
-		unit_vector = diff_vector / np.sqrt((diff_vector ** 2).sum())
-		orientation = np.arctan2(unit_vector[0], unit_vector[1])
+	return lines_coeffs, lines_intersects
 
-		line_len = distance.euclidean(endpoints[0], endpoints[1])
-		endpoints[0] +=  (line_len / 10) * unit_vector
-		endpoints[1] -=  (line_len / 10) * unit_vector
-		line_len = distance.euclidean(endpoints[0], endpoints[1])
-
-		x = np.linspace(-1.0 * (self.ROI_W - 1) / 2, (self.ROI_W - 1) / 2, self.w)
-		y = np.linspace(-1.0 * (line_len - 1) / 2, (line_len - 1) / 2, int(line_len / self.resol))
-		X, Y = np.meshgrid(x, y)
-		Xr = np.cos(orientation) * X + np.sin(orientation) * Y
-		Yr = -np.sin(orientation) * X + np.cos(orientation) * Y
-		grid = (np.dstack((Xr, Yr)) + (endpoints[0] + endpoints[1]) / 2).astype(np.float32)
+def extract_lines(gt, angle_range):
+	_, _angles, _dists = search_lines(gt, angle_range, npoints=1000, min_distance=100, min_angle=300, threshold=None)
+	return get_lines(_dists, _angles), _angles.mean()
 
 
-		if self.plot:
+# class LineSampler:
 
-			fig, ax = plt.subplots(1)
-			ax.imshow(np.zeros(sz + (3,), dtype=np.uint8))
+# 	def __init__(self, resol):
+# 		self.resol = resol
 
-			for _point in grid.reshape(-1,2).tolist():
-				circle = plt.Circle(tuple(_point), 1, color='b')
-				ax.add_patch(circle)
+# 	def __call__(self, endpoints, sz):
 
-			circle = plt.Circle(tuple(endpoints[0].tolist()), 10, color='b')
-			ax.add_patch(circle)
-			circle = plt.Circle(tuple(endpoints[1].tolist()), 10, color='b')
-			ax.add_patch(circle)
+# 		def norm_coords(coords):
+# 			coords[..., 0] = 2 * coords[..., 0] / float(sz[1] - 1) - 1
+# 			coords[..., 1] = 2 * coords[..., 1] / float(sz[0] - 1) - 1
+# 			return coords
 
-			plt.show()
+# 		endpoints = np.array(endpoints)
 
-		return norm_coords(grid)
+# 		diff_vector = endpoints[1] - endpoints[0]
+# 		unit_vector = diff_vector / np.sqrt((diff_vector ** 2).sum())
+# 		orientation = np.arctan2(unit_vector[0], unit_vector[1])
 
-class LineSampler:
+# 		line_len = distance.euclidean(endpoints[0], endpoints[1])
+# 		endpoints[0] +=  (line_len / 10) * unit_vector
+# 		endpoints[1] -=  (line_len / 10) * unit_vector
+# 		line_len = distance.euclidean(endpoints[0], endpoints[1])
+# 		npoints = int()
 
-	def __init__(self, angle_step=5.0, rho_step=100, plot=False, min_len=300):
+# 		X = np.zeros(npoints, dtype=np.float32)
+# 		Y = np.linspace(-1.0 * (line_len - 1) / 2, (line_len - 1) / 2, npoints)
 
-		self.angle_step = angle_step
-		self.rho_step = rho_step
-		self.plot = plot
-		self.min_len = min_len
-		self.plot = plot
+# 		Xr = np.cos(orientation) * X + np.sin(orientation) * Y
+# 		Yr = -np.sin(orientation) * X + np.cos(orientation) * Y
 
-	def __call__(self, angle_range, sz):
+# 		grid = (np.dstack((Xr, Yr)) + (endpoints[0] + endpoints[1]) / 2).astype(np.float32)
+# 		grid_list.append(grid)
 
-		max_distance = 2 * np.sqrt(sz[0] ** 2 + sz[1] ** 2)
-		rhos =  np.arange(-max_distance / 2.0, max_distance / 2.0 + self.rho_step, self.rho_step)
-		thetas = np.arange(angle_range[0], angle_range[1] + self.angle_step, self.angle_step)
-		thetas = np.deg2rad(thetas)
+# 	return norm_coords(np.concatenate(grid_list, axis=0))
 
-		lines_coeffs = []
-		lines_intersects = []
-		for _theta in thetas.tolist():
-			for _rho in rhos.tolist():
-				line_coeffs = general_form(_rho, _theta)
-				intersect_points = find_intesect_borders(line_coeffs, sz)
-				if intersect_points is not None:
-					intersect_points = np.array(intersect_points)
-					line_len = distance.euclidean(intersect_points[0], intersect_points[1])
-					if line_len >= self.min_len: 
-						lines_coeffs.append(normal_form(*line_coeffs))
-						lines_intersects.append(intersect_points.tolist())
 
-		if self.plot:
-			plt.figure()
-			plt.imshow(create_grid(sz, lines_coeffs))
-			plt.show()
 
-		return lines_coeffs, lines_intersects
+
+
+
+# class LineProposals:
+
+# 	def __init__(self, angle_step=5.0, rho_step=100, plot=False, min_len=300):
+
+# 		self.angle_step = angle_step
+# 		self.rho_step = rho_step
+# 		self.plot = plot
+# 		self.min_len = min_len
+# 		self.plot = plot
+
+# 	def __call__(self, angle_range, sz):
+
+# 		max_distance = 2 * np.sqrt(sz[0] ** 2 + sz[1] ** 2)
+# 		rhos =  np.arange(-max_distance / 2.0, max_distance / 2.0 + self.rho_step, self.rho_step)
+# 		thetas = np.arange(angle_range[0], angle_range[1] + self.angle_step, self.angle_step)
+# 		thetas = np.deg2rad(thetas)
+
+# 		lines_coeffs = []
+# 		lines_intersects = []
+# 		for _theta in thetas.tolist():
+# 			for _rho in rhos.tolist():
+# 				line_coeffs = general_form(_rho, _theta)
+# 				intersect_points = find_intesect_borders(line_coeffs, sz)
+# 				if intersect_points is not None:
+# 					intersect_points = np.array(intersect_points)
+# 					line_len = distance.euclidean(intersect_points[0], intersect_points[1])
+# 					if line_len >= self.min_len: 
+# 						lines_coeffs.append(normal_form(*line_coeffs))
+# 						lines_intersects.append(intersect_points.tolist())
+
+# 		if self.plot:
+# 			plt.figure()
+# 			plt.imshow(create_grid(sz, lines_coeffs))
+# 			plt.show()
+
+# 		return lines_coeffs, lines_intersects
 
 
 
