@@ -31,21 +31,7 @@ def train(train_model, train_dataloader, criterion, optimizer, scheduler, device
 	# Iterate over data.
 	for _iter, data in tqdm(enumerate(train_dataloader), total=len(train_dataloader), dynamic_ncols=True):
 
-		# #Descomentar cuando sea mosaico
-		# frame_img = data['frame_img'].to(device)
-		# mosaic_img = data['mosaic_img'].to(device)
-		# grid_coords = data['grid_coords'].to(device)
-
-		# #Descomentar cuando no sea mosaico
-		# inputs = data['image'].to(device)
-
 		with torch.set_grad_enabled(True):
-
-			# #Descomentar cuando sea mosaico
-			# outputs = train_model(frame_img, mosaic_img, grid_coords)
-
-			# #Descomentar cuando no sea mosaico
-			# outputs = train_model(inputs)
 
 			outputs = train_model(data)
 
@@ -63,8 +49,11 @@ def train(train_model, train_dataloader, criterion, optimizer, scheduler, device
 				optimizer.zero_grad()
 
 			if _iter > 0 and _iter % (display_iters * iter_size) == 0:
-				print('>>> Loss: {:.4f}'.format(running_loss.value()))
+				print()
+				print('----------------------------------------------')
+				print('>> Loss: {:.4f}'.format(running_loss.value()))
+				print('----------------------------------------------')
+				print()
 				running_loss.reset()
 				for idx, param_group in enumerate(optimizer.param_groups):
 					print('Param Group {}: {}'.format(idx, param_group['lr']))
-				# train_model.gabor_bank.plot_filters()

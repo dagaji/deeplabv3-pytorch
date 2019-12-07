@@ -2,6 +2,9 @@ import yaml
 import pdb
 from collections import OrderedDict
 import os
+import torch
+# from functools import partial
+
 
 # def list_to_od(_list):
 # 	od = OrderedDict()
@@ -42,6 +45,37 @@ def get_cfgs_video(config_path):
 	    except yaml.YAMLError as exc:
 	        print(exc)
 	return None
+
+
+def check_gradient(name, tensor_stats=False):
+
+	def _check_gradient(func):
+
+		def inner_func(*args, **kwargs):
+
+			x = func(*args, **kwargs)
+
+			def hook_func(grad):
+
+				print('-- GRADIENT CHECKING OF {} --'.format(name))
+				print('>> Shape: {}'.format(grad.shape))
+				grad_mean = torch.abs(grad).reshape(-1).max()
+				print('>> Max Grad value: {}'.format(grad_mean))
+				if tensor_stats:
+					x_mean = torch.abs(x).reshape(-1).max()
+					print('>> Max X value: {}'.format(x_mean))
+				print()
+
+			x.register_hook(hook_func)
+
+			return x
+
+		return inner_func
+
+	return _check_gradient
+
+
+
 
 
 

@@ -129,7 +129,6 @@ class _RandomRotation(object):
         label = self.rotate_img(label, angle, self.crop_size, is_mask=True)
 
         ignore_mask = label.copy()
-        ignore_mask = ignore_mask[...,0]
         ignore_mask[ignore_mask != self.aux_index] = 0
         kernel = np.ones((21,21), np.uint8)
         ignore_mask = cv2.dilate(ignore_mask, kernel, iterations=3)

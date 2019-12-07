@@ -1,26 +1,25 @@
 import torch
 import torch.nn as nn
 import numpy as np
-
 import pdb
 from torch.nn import functional as F
 from collections import OrderedDict
 import matplotlib.pyplot as plt
 import deeplabv3.lines as lines
-from deeplabv3.save import ResultsLogger
 from deeplabv3.model.deeplab import _Deeplabv3Plus, DeepLabDecoder1
+from deeplabv3.utils import check_gradient
 
 def gabor(theta, sigma_x=0.075, sigma_y=0.75, Lambda=0.2, psi=0.0, kernel_size=51):
 
-    y, x = np.meshgrid(np.linspace(-0.5, 0.5, kernel_size), np.linspace(-0.5, 0.5, kernel_size))
+	y, x = np.meshgrid(np.linspace(-0.5, 0.5, kernel_size), np.linspace(-0.5, 0.5, kernel_size))
 
-    # Rotation
-    x_theta = x * np.cos(theta) - y * np.sin(theta)
-    y_theta = x * np.sin(theta) + y * np.cos(theta)
+	# Rotation
+	x_theta = x * np.cos(theta) - y * np.sin(theta)
+	y_theta = x * np.sin(theta) + y * np.cos(theta)
 
-    gb = np.exp(-.5 * (x_theta ** 2 / sigma_x ** 2 + y_theta ** 2 / sigma_y ** 2)) * np.cos(2 * np.pi / Lambda * x_theta + psi)
-    
-    return gb.astype(np.float32)
+	gb = np.exp(-.5 * (x_theta ** 2 / sigma_x ** 2 + y_theta ** 2 / sigma_y ** 2)) * np.cos(2 * np.pi / Lambda * x_theta + psi)
+	
+	return gb.astype(np.float32)
 
 class GaborBank(nn.Module):
 	def __init__(self, thetas, kernel_size=51, Lambda=0.2):
@@ -77,8 +76,9 @@ class AngleDetect(_Deeplabv3Plus):
 											DeepLabDecoder1(256, out_planes=out_planes_skip), 
 											predict,
 											aux=aux)
-		self.reduce = nn.Sequential(
-			nn.Conv2d(256, 1, kernel_size=1, stride=1, bias=False))
+		self.reduce = nn.Sequential(nn.Conv2d(256, 1, kernel_size=1, stride=1, bias=False))
+		# self.reduce.__call__ = check_gradient('REDUCE_OUPUT')(self.reduce)
+
 		self.relu = nn.ReLU()
 
 		angles1 = np.deg2rad(np.arange(min_angle, max_angle + angle_step, angle_step))
@@ -98,12 +98,10 @@ class AngleDetect(_Deeplabv3Plus):
 			filter_weights = np.dstack(filter_weights)
 			filter_weights = np.transpose(filter_weights, (2,0,1))
 			filter_weights = torch.Tensor(filter_weights).view_as(self.gabor_bank.weight.data)
-			self.gabor_bank.weight = nn.Parameter(filter_weights)
-			self.gabor_bank.requires_grad=False
+			self.gabor_bank.weight = nn.Parameter(filter_weights, requires_grad=True)
 
-		# self.plot_gabor()
+		self.line_sampler = lines.LineSampler(angle_step=2.5, rho_step=25)
 
-		# self.results_logger = ResultsLogger('reunion/results_25_25')
 
 	def plot_gabor(self, indices=None):
 
@@ -120,6 +118,7 @@ class AngleDetect(_Deeplabv3Plus):
 			plt.title("Theta={}".format(theta))
 		plt.show()
 
+
 	def plot_gabor_response(self, res):
 
 		for _res in res.squeeze(0)[:self.num_angles]:
@@ -128,40 +127,70 @@ class AngleDetect(_Deeplabv3Plus):
 			plt.imshow(_res)
 		plt.show()
 
-
 		
 	def load_state_dict(self, state_dict, strict=True):
 		super(AngleDetect, self).load_state_dict(state_dict, strict)
 		if 'reduce.weight' not in state_dict:
 			w0, w1 = self.classifier.weight.data[:2]
-			self.reduce[0].weight = nn.Parameter((w1 - w0).unsqueeze(0))
+			self.reduce[0].weight = nn.Parameter((w1 - w0).unsqueeze(0), requires_grad=True)
 
-	def get_device(self,):
-		return self.classifier.weight.device
 
-	def compute_angle_range(self, x):
+	def compute_angle_range(self, x_features):
 
-		bs = x.shape[0]
-		x = self.reduce(x)
-		x = self.gabor_bank(x)
-		x = self.relu(x)
-		x = x.transpose(0,1)
-		x1 = x[:self.num_angles].transpose(0,1)
-		x2 = x[self.num_angles:].transpose(0,1)
-		x = x1 + x2
-		x = x.view(bs, self.num_angles, -1).sum(2)
-		x = x.transpose(0,1)
-		x = (x[:-1] + x[1:]).transpose(0,1)
-		return x / x.sum(1)
+		@check_gradient('GABOR_OUPUT')
+		def apply_gabor_bank(x):
+			x = self.gabor_bank(x)
+			x = self.relu(x)
+			x = x.transpose(0,1)
+			x1 = x[:self.num_angles].transpose(0,1)
+			x2 = x[self.num_angles:].transpose(0,1)
+			return x1 + x2
+
+		@check_gradient('HIST_OUPUT')
+		def compute_hist(x):
+			bs = x.shape[0]
+			x = x.view(bs, self.num_angles, -1).sum(2)
+			x = x.transpose(0,1)
+			return (x[:-1] + x[1:]).transpose(0,1)
+
+		x = apply_gabor_bank(x_features)
+		return compute_hist(x)
 
 	def trainable_parameters(self,):
 		params = list(self.reduce.parameters())
-		# if self.train_gabor:
-		# 	params += list(self.gabor_bank.parameters())
-		# params += list(super(AngleDetect, self).parameters())
+		if self.train_gabor:
+			params += list(self.gabor_bank.parameters())
 		return params
 
+	def lines_detect(self, scores, angle_ranges_probs):
+
+		sz = scores.shape[-2:]
+		idx = torch.argmax(angle_ranges_probs.squeeze()).item()
+
+		angle_range_v = np.deg2rad((self.angles_v[idx], self.angles_v[idx+1]))
+		angle_range_h = angle_range_v + np.pi/2
+
+		lines_coeffs_v, line_endpoints_v = self.line_sampler(angle_range_v, sz)
+		sampled_points_v = lines.sample_line(line_endpoints_v, sz)
+
+		lines_coeffs_h, line_endpoints_h = self.line_sampler(angle_range_h, sz)
+		sampled_points_h = lines.sample_line(line_endpoints_h, sz)
+
+		proposed_lines = np.array(lines_coeffs_v + lines_coeffs_h, dtype=np.float32)
+		sampled_points = np.vstack((sampled_points_v, sampled_points_h))[np.newaxis,...]
+		grid = torch.Tensor(sampled_points).to(self.get_device())
+		sampled_scores = F.grid_sample(scores, grid)
+		line_probs = torch.sigmoid(sampled_scores.transpose(1,2)).mean(3).squeeze()
+		pre, post = self.predict(line_probs, proposed_lines, sz)
+
+		return post
+
+
 	def forward(self, inputs):
+
+		@check_gradient('REDUCE_OUPUT', tensor_stats=True)
+		def _reduce(x):
+			return self.reduce(x)
 
 		x = inputs['image'].to(self.get_device())
 		input_shape = x.shape[-2:]
@@ -170,10 +199,18 @@ class AngleDetect(_Deeplabv3Plus):
 		x_low = features["skip1"]
 		x = self.aspp(x)
 		x = self.decoder(x, x_low)
-		angle_ranges = self.compute_angle_range(x)
+		x_score = _reduce(x)
+		angle_ranges = self.compute_angle_range(x_score)
 
-		result = OrderedDict()
-		result["out"] = OrderedDict()
-		result["out"]["angle_ranges"] = angle_ranges
-		return result
+		if self.training:
+			result = OrderedDict()
+			result["out"] = OrderedDict()
+			result["out"]["angle_ranges"] = angle_ranges
+			return result
+		else:
+			# x_score = F.interpolate(x_score, size=input_shape, mode='bilinear', align_corners=False)
+			# return angle_ranges, self.lines_detect(x_score, angle_ranges)
+			return angle_ranges, 0
+
+
 

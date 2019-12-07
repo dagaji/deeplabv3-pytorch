@@ -1,24 +1,17 @@
-from .deeplab import *
-from .angle_detect import *
-from .predict import *
-from .angle_detect import *
+from deeplabv3.model import deeplab
+from deeplabv3.model import angle_detect
+from deeplabv3.model import predict
+from deeplabv3.model import mosaic
 from .multi_frame import MultiFrameMerge
-import torch.nn as nn
 
-models_map = {'deeplabv3' : Deeplabv3,
-			  'deeplabv3+1' : Deeplabv3Plus1,
-			  'lines': Deeplabv3PlusLines,
-			  'lines2': Deeplabv3PlusLines2,
-			  'lines3': Deeplabv3PlusLines3,
-			  'angle': AngleDetect,
+models_map = {'deeplabv3' : deeplab.Deeplabv3,
+			  'deeplabv3+1' : deeplab.Deeplabv3Plus1,
+			  'angle_detect': angle_detect.AngleDetect,
 			  }
 
-predict_map = {'argmax': argmax_predict,
-			   'line_dect': line_detection,
+predict_map = {'argmax': predict.argmax_predict,
+			   'line_dect': predict.line_detection,
 			   'line_dect_multi': MultiFrameMerge(nframes=9),
-			   'draw_lines': draw_lines,
-			   'draw_lines2': draw_lines2,
-			   'draw_lines3': draw_lines3,
 			   }
 
 output_stride_params = { 16: dict(replace_stride_with_dilation=[False, False, True], rates=[6, 12, 18]),
@@ -35,14 +28,14 @@ output_stride_params = { 16: dict(replace_stride_with_dilation=[False, False, Tr
 
 def get_model(n_classes, cfg, aux=False):
 
-	if cfg['name'] == 'mosaic':
-		return _get_model_mosaic(n_classes, cfg, aux=False)
+	# if cfg['name'] == 'mosaic':
+	# 	return _get_model_mosaic(n_classes, cfg, aux=False)
 
 	return_layers = dict(layer4='out', layer1='skip1', layer3='aux')
 
 	kw_backbone_args = dict(output_stride_params[cfg['stride']])
 	kw_backbone_args.update(return_layers=return_layers)
-	pretrained_model = load_pretrained_model(kw_backbone_args)
+	pretrained_model = deeplab.load_pretrained_model(kw_backbone_args)
 	
 	predict_key = cfg.get('predict', 'argmax')
 	out_planes_skip = cfg.get('out_planes_skip', 48)
@@ -54,26 +47,26 @@ def get_model(n_classes, cfg, aux=False):
 	return model
 
 
-def _get_model_mosaic(n_classes, cfg, aux=False):
+# def _get_model_mosaic(n_classes, cfg, aux=False):
 
-	def _load_pretrained_model(stride):
-		return_layers = dict(layer4='out', layer1='skip1', layer3='aux')
-		kw_backbone_args = dict(output_stride_params[stride])
-		kw_backbone_args.update(return_layers=return_layers)
-		pretrained_model = load_pretrained_model(kw_backbone_args)
-		return pretrained_model
+# 	def _load_pretrained_model(stride):
+# 		return_layers = dict(layer4='out', layer1='skip1', layer3='aux')
+# 		kw_backbone_args = dict(output_stride_params[stride])
+# 		kw_backbone_args.update(return_layers=return_layers)
+# 		pretrained_model = load_pretrained_model(kw_backbone_args)
+# 		return pretrained_model
 
-	pretrained_model = _load_pretrained_model(cfg['stride'])
-	predict_key = cfg.get('predict', 'argmax')
-	out_planes_skip = cfg.get('out_planes_skip', 48)
-	base_model = models_map[cfg['base_model']](n_classes, 
-										   pretrained_model, 
-										   predict_map[predict_key], 
-										   aux=aux, 
-										   out_planes_skip=out_planes_skip)
-	#base_model.load_state_dict(torch.load(cfg['init'])["model_state_dict"], strict=False)
+# 	pretrained_model = _load_pretrained_model(cfg['stride'])
+# 	predict_key = cfg.get('predict', 'argmax')
+# 	out_planes_skip = cfg.get('out_planes_skip', 48)
+# 	base_model = models_map[cfg['base_model']](n_classes, 
+# 										   pretrained_model, 
+# 										   predict_map[predict_key], 
+# 										   aux=aux, 
+# 										   out_planes_skip=out_planes_skip)
+# 	#base_model.load_state_dict(torch.load(cfg['init'])["model_state_dict"], strict=False)
 
-	mosaic_backbone = _load_pretrained_model(cfg['mosaic-stride']).backbone
+# 	mosaic_backbone = _load_pretrained_model(cfg['mosaic-stride']).backbone
 
-	return models_map['mosaic'](base_model, mosaic_backbone)
+# 	return models_map['mosaic'](base_model, mosaic_backbone)
 

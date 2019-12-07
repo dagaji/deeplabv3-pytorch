@@ -5,7 +5,7 @@ import numpy as np
 import pdb
 
 
-class AccuracyMeter(object):
+class AccuracyAngleRange(object):
     def __init__(self,):
         self.reset()
 
@@ -13,14 +13,15 @@ class AccuracyMeter(object):
         self.preds = []
         self.labels = []
 
-    def add(self, preds, data):
+    def __call__(self, preds, data):
+        preds = preds[0]
         labels = data['angle_range_label'].numpy().tolist()
         for _pred, _label in zip(preds, labels):
             _pred = np.argmax(_pred.cpu().numpy())
             self.preds.append(_pred)
             self.labels.append(_label)
 
-    def score(self,):
+    def value(self,):
         return np.mean(np.array(self.preds) == np.array(self.labels))
 
 
@@ -37,13 +38,14 @@ class RunningScore(object):
         ).reshape(n_class, n_class)
         return hist
 
-    def update(self, label_trues, label_preds):
+    def __call__(self, label_preds, data):
+        label_trues = data['label']
         for lt, lp in zip(label_trues, label_preds):
             lt = lt.cpu().numpy()
             lp = lp.cpu().numpy()
             self.confusion_matrix += self._fast_hist(lt.flatten(), lp.flatten(), self.n_classes)
 
-    def get_pre_class_iu(self):
+    def value(self):
         hist = self.confusion_matrix
         pre_class_iu = np.diag(hist) / (hist.sum(axis=1) + hist.sum(axis=0) - np.diag(hist))
         return pre_class_iu

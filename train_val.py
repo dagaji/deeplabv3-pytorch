@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
-import numpy as np; np.random.seed(0)
+import numpy as np;
 import torchvision
 from deeplabv3.dataset import get_dataset
 from deeplabv3.model import get_model
@@ -9,15 +9,14 @@ from deeplabv3.optimizer import get_optimizer
 from deeplabv3.scheduler import get_scheduler
 from deeplabv3.loss import get_loss
 import deeplabv3.utils as utils
-from deeplabv3.metrics import RunningScore, AverageMeter
-import pdb
+import pdb; pdb.set_trace()
 import time
 from tqdm import tqdm
 from skimage.io import imsave, imread
 import os.path
 from argparse import ArgumentParser
 from torchsummary import summary
-from deeplabv3.save import ResultsSaverFactory, CheckpointSaver
+from deeplabv3.save import CheckpointSaver
 from pathlib import Path
 from val import validate
 from train import train
@@ -82,21 +81,8 @@ if __name__ == "__main__":
 			val_dataloader = get_dataloader(_id_list_path.format('val'), _val_exper['dataset'], val_cfg['batch_size'], shuffle=False)
 			val_expers[_val_exper['name']] = dict(model_val=model_val, val_dataloader=val_dataloader)
 
-		if 'loss' in training_cfg:
-			criterion = get_loss(training_cfg['loss'])
-		else:
-			criterion = nn.CrossEntropyLoss(ignore_index=255).to(device)
-			cross_entropy = nn.CrossEntropyLoss(ignore_index=255).to(device)
-			criterion = lambda x, data: cross_entropy(x, data['label'].to(device))
+		criterion = get_loss(training_cfg['loss'])
 		
-		#Solo en caso de mosaico
-		# for param in model_train.backbone.parameters():
-		# 	param.requires_grad = False
-		# for param in model_train.mosaic_backbone.parameters():
-		# 	param.requires_grad = False
-		# params_1 = [param[1] for param in model_train.named_parameters() if param[0] != "bias"]
-		# params_2 = [model_train.bias]
-		# params_to_update = [{'params': params_1, 'lr': 0.0005}, {'params': params_2, 'lr': 0.01}]
 		optimizer = optim.SGD(model_train.trainable_parameters(), lr=0.0005, momentum=0.9, weight_decay=1e-5)
 
 		checkpoint_dir = os.path.join('checkpoint', args.dataset, 'partition_{}', exper_name).format(partition_number)
@@ -111,8 +97,8 @@ if __name__ == "__main__":
 			
 		scheduler = get_scheduler(training_cfg['scheduler']['name'])(optimizer, **training_cfg['scheduler']["params"])
 
-		results_dir = os.path.join('results', args.dataset, 'partition_{}', exper_name).format(partition_number)
-		saver_factory = ResultsSaverFactory(num_classes, results_dir, current_epoch)
+		# results_dir = os.path.join('results', args.dataset, 'partition_{}', exper_name).format(partition_number)
+		# saver_factory = ResultsSaverFactory(num_classes, results_dir, current_epoch)
 		checkpoint_saver = CheckpointSaver(checkpoint_dir, current_epoch)
 
 		for epoch in range(args.num_epochs):
@@ -133,17 +119,17 @@ if __name__ == "__main__":
 						training_cfg)
 
 				elif (epoch + 1) % val_cfg['val_epochs'] == 0:
-					checkpoint_saver.save_checkpoint(epoch, model_train, optimizer)
+					checkpoint_saver(epoch, model_train, optimizer)
 
-					for val_exper_name, val_exper in val_expers.items():
-						val_model, val_dataloader = val_exper['model_val'], val_exper['val_dataloader']
-						root_folder = val_dataloader.dataset.img_root
-						results_saver = saver_factory.get_saver(val_exper_name, 
-																root_folder, 
-																epoch)
-						val_model.load_state_dict(model_train.state_dict(), strict=False)
-						validate(val_model, 
-							val_dataloader, 
-							num_classes, 
-							device, 
-							saver=results_saver)
+					# for val_exper_name, val_exper in val_expers.items():
+					# 	val_model, val_dataloader = val_exper['model_val'], val_exper['val_dataloader']
+					# 	root_folder = val_dataloader.dataset.img_root
+					# 	results_saver = saver_factory.get_saver(val_exper_name, 
+					# 											root_folder, 
+					# 											epoch)
+					# 	val_model.load_state_dict(model_train.state_dict(), strict=False)
+					# 	validate(val_model, 
+					# 		val_dataloader, 
+					# 		num_classes, 
+					# 		device, 
+					# 		saver=results_saver)

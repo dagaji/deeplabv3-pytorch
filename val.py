@@ -1,7 +1,5 @@
-import numpy as np; np.random.seed(0)
-
+import numpy as np
 import torch
-from deeplabv3.metrics import RunningScore
 from tqdm import tqdm
 from argparse import ArgumentParser
 from pathlib import Path
@@ -16,7 +14,7 @@ from deeplabv3.optimizer import get_optimizer
 from deeplabv3.scheduler import get_scheduler
 from deeplabv3.loss import get_loss
 import deeplabv3.utils as utils
-from deeplabv3.metrics import RunningScore, AccuracyMeter
+from deeplabv3.metrics import RunningScore, AccuracyAngleRange
 import pdb
 import time
 from tqdm import tqdm
@@ -24,7 +22,7 @@ from skimage.io import imsave, imread
 import os.path
 from argparse import ArgumentParser
 from torchsummary import summary
-from deeplabv3.save import ResultsSaverFactory, CheckpointSaver
+from deeplabv3.save import ResultsSaver, CheckpointSaver
 from pathlib import Path
 import time
 
@@ -64,51 +62,28 @@ def parse_args():
 	parser.add_argument('--config', type=str, required=True)
 	parser.add_argument('--dataset', type=str, default='APR_TAX_RWY')
 	parser.add_argument('--partitions', nargs='+', type=int)
+	parser.add_argument('-train', dest='train', action='store_true')
+	parser.set_defaults(train=False)
 	parser.add_argument('-cpu', dest='use_cpu', action='store_true')
 	parser.set_defaults(use_cpu=False)
 	return parser.parse_args()
 
 
 @timeit
-def validate(val_model, val_loader, num_classes, device, saver=None):
-
-	# pdb.set_trace()
+def validate(val_model, val_loader, metric, vis_saver=None):
 
 	val_model.eval()   # Set model to evaluate mode
-
-	# running_score = RunningScore(num_classes)
-	# running_score.reset()
-	accuracy_meter = AccuracyMeter()
-
+	np.random.seed(0)
 
 	with torch.set_grad_enabled(False):
 
 		# Iterate over data.
 		for _iter, data in tqdm(enumerate(val_loader), total=len(val_loader), dynamic_ncols=True):
-
-			# frame_img = data['frame_img'].to(device)
-			# mosaic_img = data['mosaic_img'].to(device)
-			# grid_coords = data['grid_coords'].to(device)
-			# image_id = data['frame_id']
-
-			#preds = val_model(frame_img, mosaic_img, grid_coords)
 			preds = val_model(data)
-			
+			metric(preds, data)
+			if vis_saver is not None:
+				vis_saver(preds, data)
 
-			# image_id = data['image_id']
-			# inputs = data['image'].to(device)
-			# # labels = data['label'].to(device)
-
-			# preds = val_model(inputs)
-
-			# running_score.update(labels, preds)
-			# if saver is not None:
-			# 	saver.save_vis(data['image_id'], preds)
-
-	# per_class_iu = running_score.get_pre_class_iu()
-	# print('Per_class IoU: {}'.format(per_class_iu))
-	# if saver is not None:
-	# 	saver.save_score(per_class_iu)
 
 if __name__ == "__main__":
 	args = parse_args()
@@ -138,7 +113,8 @@ if __name__ == "__main__":
 		val_expers = {}
 		for _val_exper in val_cfg['val_expers']:
 			model_val = get_model(num_classes, _val_exper["model"]).to(device)
-			val_dataloader = get_dataloader(_id_list_path.format('val'), _val_exper['dataset'], val_cfg['batch_size'], shuffle=False)
+			id_list_path = _id_list_path.format('train' if args.train else 'val')
+			val_dataloader = get_dataloader(id_list_path, _val_exper['dataset'], val_cfg['batch_size'], shuffle=False)
 			val_expers[_val_exper['name']] = dict(model_val=model_val, val_dataloader=val_dataloader)
 
 		checkpoint_dir = os.path.join('checkpoint', args.dataset, 'partition_{}', exper_name).format(partition_number)
@@ -152,18 +128,19 @@ if __name__ == "__main__":
 			current_epoch = 0
 
 		results_dir = os.path.join('results', args.dataset, 'partition_{}', exper_name).format(partition_number)
-		saver_factory = ResultsSaverFactory(num_classes, results_dir, current_epoch)
 
 		for val_exper_name, val_exper in val_expers.items():
 			print('>> {}'.format(val_exper_name))
 			val_model, val_dataloader = val_exper['model_val'], val_exper['val_dataloader']
-			root_folder = val_dataloader.dataset.root
-			results_saver = saver_factory.get_saver(val_exper_name, root_folder, 0)
-			
 			val_model.load_state_dict(model_train.state_dict(), strict=False)
-			validate(val_model, 
-				val_dataloader, 
-				num_classes, 
-				device, saver=results_saver)
+			########### Aquí definimos la métrica que vamos a utilizar (en un futuro mediante fichero conf) ###########################
+			metric = AccuracyAngleRange()
+			# metric = RunningScore(num_classes)
+			# save_vis_dir = os.path.join(results_dir, val_exper_name, 'epoch_{}'.format(current_epoch), 'train' if args.train else 'val')
+			# save_vis = ResultsSaver(num_classes, val_dataloader.dataset.root, save_vis_dir, current_epoch)
+			save_vis = None
+			###########################################################################################################################
+			validate(val_model, val_dataloader, metric, save_vis)
+			print(">>>> score: {}".format(metric.value()))
 
 
