@@ -118,7 +118,6 @@ def sample_line(endpoints, sz, resol):
 		Yr = -np.sin(orientation) * X + np.cos(orientation) * Y
 
 		grid = (np.dstack((Xr, Yr)) + (endpoints[0] + endpoints[1]) / 2).astype(np.float32)
-		grid_list.append(grid)
 
 	return norm_coords(np.concatenate(grid_list, axis=0))
 

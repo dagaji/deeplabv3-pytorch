@@ -6,7 +6,7 @@ from .multi_frame import MultiFrameMerge
 
 models_map = {'deeplabv3' : deeplab.Deeplabv3,
 			  'deeplabv3+1' : deeplab.Deeplabv3Plus1,
-			  'angle_detect': angle_detect.AngleDetect,
+			  'angle_detect': angle_detect.AngleDetect_v2,
 			  }
 
 predict_map = {'argmax': predict.argmax_predict,

@@ -6,7 +6,7 @@ from torch.nn import functional as F
 from collections import OrderedDict
 import matplotlib.pyplot as plt
 import deeplabv3.lines as lines
-from deeplabv3.model.deeplab import _Deeplabv3Plus, DeepLabDecoder1
+from deeplabv3.model.deeplab import _Deeplabv3Plus, DeepLabDecoder1, init_conv
 from deeplabv3.utils import check_gradient
 
 def gabor(theta, sigma_x=0.075, sigma_y=0.75, Lambda=0.2, psi=0.0, kernel_size=51):
@@ -79,6 +79,7 @@ class AngleDetect(_Deeplabv3Plus):
 		self.reduce = nn.Sequential(nn.Conv2d(256, 1, kernel_size=1, stride=1, bias=False))
 
 		self.relu = nn.ReLU()
+
 
 		angles1 = np.deg2rad(np.arange(min_angle, max_angle + angle_step, angle_step))
 		self.angles_v = np.rad2deg(angles1)
@@ -212,4 +213,151 @@ class AngleDetect(_Deeplabv3Plus):
 			return angle_ranges, 0
 
 
+class AngleDetect_v2(_Deeplabv3Plus):
+	def __init__(self, n_classes, pretrained_model, predict,
+		aux=False, out_planes_skip=48, angle_step=15.0, min_angle=-30.0, max_angle=30.0, kernel_size=51, group_size=5, resol=10):
+		
+		super(AngleDetect_v2, self).__init__(n_classes, 
+											pretrained_model, 
+											DeepLabDecoder1(256, out_planes=out_planes_skip), 
+											predict,
+											aux=aux)
+
+		self. = nn.Sequential(nn.Conv2d(256, 1, kernel_size=1, stride=1, bias=False))
+
+
+		angles1 = np.deg2rad(np.arange(min_angle, max_angle + angle_step, angle_step))
+		self.angles_v = np.rad2deg(angles1)
+		angles2 = angles1 + np.pi/2
+		angles = np.array(angles1.tolist() + angles2.tolist())
+		self.num_angles = len(angles1)
+		gabor_bank = nn.Conv2d(1, 2 * self.num_angles, kernel_size=kernel_size, stride=1, bias=False)
+		filter_weights = []
+		for angle in (np.pi/2 - angles).tolist():
+			filter_weights.append(gabor(angle, kernel_size=kernel_size))
+			filter_weights = np.dstack(filter_weights)
+			filter_weights = np.transpose(filter_weights, (2,0,1))
+			filter_weights = torch.Tensor(filter_weights).view_as(gabor_bank.weight.data)
+			gabor_bank.weight = nn.Parameter(filter_weights, requires_grad=True)
+		self.gabor_bank = nn.Sequential(gabor_bank, nn.ReLU())
+
+		self.group_size = group_size
+		self.line_clf = nn.Conv2d(256, 1, kernel_size=(1, self.group_size), stride=1, bias=False)
+		init_conv(self.line_clf)
+		self.resol = resol
+
+
+	def plot_gabor(self, indices=None):
+
+		gabor_filters = self.gabor_bank.weight.data[:self.num_angles]
+		gabor_angles = self.angles_v.copy()
+		if indices is not None:
+			gabor_filters = gabor_filters[indices]
+			gabor_angles = gabor_angles[indices]
+
+		for gf, theta in zip(gabor_filters, gabor_angles):
+			gf = gf.squeeze().cpu().numpy()
+			plt.figure()
+			plt.imshow(gf)
+			plt.title("Theta={}".format(theta))
+		plt.show()
+
+
+	def plot_gabor_response(self, res):
+
+		for _res in res.squeeze(0)[:self.num_angles]:
+			_res = _res.cpu().detach().numpy().squeeze()
+			plt.figure()
+			plt.imshow(_res)
+		plt.show()
+
+
+	def compute_angle_range(self, x_features):
+
+		@check_gradient('GABOR_OUPUT')
+		def apply_gabor_bank(x):
+			x = self.gabor_bank(x)
+			x = x.transpose(0,1)
+			x1 = x[:self.num_angles].transpose(0,1)
+			x2 = x[self.num_angles:].transpose(0,1)
+			return x1 + x2
+
+		@check_gradient('HIST_OUPUT')
+		def compute_hist(x):
+			bs = x.shape[0]
+			x = x.view(bs, self.num_angles, -1).sum(2)
+			x = x.transpose(0,1)
+			return (x[:-1] + x[1:]).transpose(0,1)
+
+		x = apply_gabor_bank(x_features)
+		return compute_hist(x)
+
+	def trainable_parameters(self,):
+		params = list(super(AngleDetect_v2, self).parameters())
+		params += list(self.line_clf.parameters())
+		return params
+
+	def lines_detect(self, x_features, lines_endpoints, prob_map):
+
+		nlines = lines_endpoints.shape[0]
+		sz = prob_map.shape[-2:]
+		for idx in np.arange(nlines):
+			endpoints = lines_endpoints[idx]
+			sampled_points = lines.sample_line(endpoints, sz, self.resol)
+
+
+
+
+	def lines_detect(self, scores, angle_ranges_probs):
+
+		sz = scores.shape[-2:]
+		idx = torch.argmax(angle_ranges_probs.squeeze()).item()
+
+		angle_range_v = np.deg2rad((self.angles_v[idx], self.angles_v[idx+1]))
+		angle_range_h = angle_range_v + np.pi/2
+
+		lines_coeffs_v, line_endpoints_v = self.line_sampler(angle_range_v, sz)
+		sampled_points_v = lines.sample_line(line_endpoints_v, sz)
+
+		lines_coeffs_h, line_endpoints_h = self.line_sampler(angle_range_h, sz)
+		sampled_points_h = lines.sample_line(line_endpoints_h, sz)
+
+		proposed_lines = np.array(lines_coeffs_v + lines_coeffs_h, dtype=np.float32)
+		sampled_points = np.vstack((sampled_points_v, sampled_points_h))[np.newaxis,...]
+		grid = torch.Tensor(sampled_points).to(self.get_device())
+		sampled_scores = F.grid_sample(scores, grid)
+		line_probs = torch.sigmoid(sampled_scores.transpose(1,2)).mean(3).squeeze()
+		pre, post = self.predict(line_probs, proposed_lines, sz)
+
+		return post
+
+
+	def forward(self, inputs):
+
+		# @check_gradient('REDUCE_OUPUT', tensor_stats=True)
+		# def _reduce(x):
+		# 	return self.reduce(x)
+
+		x = inputs['image'].to(self.get_device())
+		input_shape = x.shape[-2:]
+		features = self.backbone(x)
+		x = features["out"]
+		x_low = features["skip1"]
+		x = self.aspp(x)
+		x_features = self.decoder(x, x_low)
+		# x_angles = self.compute_angle_range(x_features)
+		x_features_up = F.interpolate(x_features, size=input_shape, mode='bilinear', align_corners=False)
+		x_seg = self.classifier(x_features_up)
+		if self.training:
+			prob_map = inputs['label'].to(self.get_device()).float()
+		else:
+			prob_map = x_seg.transpose(0,1)[0].unsqueeze(0)
+
+		x_lines = self.lines_detect(x_features_up, data['proposed_lines_endpoints'].numpy().squeeze(), prob_map)
+
+		result = OrderedDict()
+		result["out"] = OrderedDict()
+		result["out"]["seg"] = x_seg
+		result["out"]["seg"] = x_lines
+		return result
 
